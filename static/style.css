@@ -1,0 +1,122 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+
+body {
+    font-family: 'Poppins', sans-serif;
+    background-color: #212529;
+    background-image: url('https://images.unsplash.com/photo-1519681393784-d120267933ba?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1770&q=80');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    color: #f8f9fa;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+
+.login-box {
+    background: rgba(18, 18, 18, 0.85);
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    width: 100%;
+    max-width: 450px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.login-box h1 {
+    font-weight: 700;
+    margin-bottom: 30px;
+    text-align: center;
+    color: #fff;
+}
+
+.login-box .form-control {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-right: none;
+    border-radius: 50px 0 0 50px;
+    color: #fff;
+    padding: 12px 20px;
+    height: 50px;
+}
+
+.login-box .form-control::placeholder {
+    color: #ccc;
+}
+
+.login-box .form-control:focus {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    box-shadow: none;
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.login-box .input-group-text {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-left: none;
+    border-radius: 0 50px 50px 0;
+    color: #fff;
+    height: 50px;
+}
+
+.login-box .form-check-input {
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.login-box .form-check-input:checked {
+    background-color: #f8f9fa;
+    border-color: #f8f9fa;
+}
+
+.login-box .form-check-label, .forgot-password {
+    font-size: 0.9em;
+    color: #ddd;
+}
+
+.forgot-password, .register-link a {
+    color: #fff;
+    text-decoration: none;
+    transition: color 0.3s;
+}
+
+.forgot-password:hover, .register-link a:hover {
+    color: #aaa;
+}
+
+.btn-login {
+    background-color: #fff;
+    color: #121212;
+    border: none;
+    border-radius: 50px;
+    padding: 12px;
+    font-weight: 600;
+    font-size: 1.1em;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.btn-login:hover {
+    background-color: #e2e6ea;
+    color: #000;
+}
+
+.register-link {
+    text-align: center;
+    margin-top: 25px;
+    font-size: 0.9em;
+    color: #ddd;
+}
+.alert {
+    font-size: 0.9rem;
+    padding: 0.75rem 1rem;
+  }
