@@ -1,3 +1,5 @@
+# --- START OF FILE app.py ---
+
 # --- START OF MODIFIED app.py ---
 
 import os
@@ -565,7 +567,8 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
     
     is_complete = False
     try:
-        delay_map = {'slow': 1, 'slower': 3, 'normal': 0}
+        # MODIFIED: Updated delay map and logic
+        delay_map = {'fast': 0, 'medium': 1, 'slow': 2}
         check_delay = delay_map.get(checker_speed, 0)
         if check_delay > 0:
             log_message(f"[⚙️] Checker speed set to '{checker_speed}'. A {check_delay}s delay will be applied after each check.", "text-info")
@@ -699,6 +702,10 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
             if original_index > 0 and original_index % 10 == 0:
                 save_progress(file_path, original_index)
                 log_message(f"Progress checkpoint saved at line {original_index + 1}...", "text-secondary")
+
+            # MODIFIED: Apply delay at the end of each account check
+            if check_delay > 0:
+                time.sleep(check_delay)
         
         if not stop_event.is_set():
             is_complete = True
@@ -791,7 +798,8 @@ def start_check():
     use_cookie_set = 'use_cookie_set' in request.form; auto_delete = 'auto_delete' in request.form
     force_restart = 'force_restart' in request.form
     telegram_level_filter = request.form.get('telegram_level_filter', 'none')
-    checker_speed = request.form.get('checker_speed', 'normal')
+    # MODIFIED: Default checker speed is now 'fast'
+    checker_speed = request.form.get('checker_speed', 'fast')
 
     log_message("Starting new check...", "text-info")
     thread = threading.Thread(target=run_check_task, args=(file_path, bot_token, chat_id, cookie_module, use_cookie_set, auto_delete, force_restart, telegram_level_filter, checker_speed, cookie_number, session['user']))
