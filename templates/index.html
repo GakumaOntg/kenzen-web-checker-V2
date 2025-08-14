@@ -24,9 +24,14 @@
         body {
             background-color: var(--body-bg);
             color: #e0e0e0;
+            padding-top: 60px; /* Space for fixed navbar */
         }
-        .container {
-            max-width: 1200px;
+        .container-fluid {
+            max-width: 1600px;
+        }
+        .navbar {
+            background-color: var(--card-bg);
+            border-bottom: 1px solid #333;
         }
         .banner {
             font-family: 'Courier New', Courier, monospace;
@@ -45,7 +50,7 @@
             background-color: var(--card-bg);
             border: 1px solid #333;
         }
-        .form-control, .form-select {
+        .form-control, .form-select, .form-control:disabled {
             background-color: #2a2a2a;
             color: #e0e0e0;
             border-color: #444;
@@ -56,34 +61,23 @@
             border-color: var(--bs-primary); /* Use theme color */
             box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
         }
+        .nav-pills .nav-link { color: #ccc; }
+        .nav-pills .nav-link.active { background-color: var(--bs-primary); color: #fff; }
+
         input[type="color"] {
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            appearance: none;
-            width: 100%;
-            height: 38px;
-            padding: 0;
-            border: 1px solid #444;
-            border-radius: 0.375rem;
-            background-color: transparent;
-            cursor: pointer;
+            -webkit-appearance: none; -moz-appearance: none; appearance: none;
+            width: 100%; height: 38px; padding: 0; border: 1px solid #444;
+            border-radius: 0.375rem; background-color: transparent; cursor: pointer;
         }
-        input[type="color"]::-webkit-color-swatch {
-            border-radius: 0.375rem;
-            border: none;
-        }
-        input[type="color"]::-moz-color-swatch {
-            border-radius: 0.375rem;
-            border: none;
-        }
+        input[type="color"]::-webkit-color-swatch { border-radius: 0.375rem; border: none; }
+        input[type="color"]::-moz-color-swatch { border-radius: 0.375rem; border: none; }
         .progress-bar, .btn-primary {
-             background-color: var(--bs-primary); /* Use theme color */
-             border-color: var(--bs-primary);
+             background-color: var(--bs-primary); border-color: var(--bs-primary);
         }
         html[data-theme-color="warning"] .btn-primary { color: #000; }
         html[data-theme-color="warning"] .btn-primary:hover { color: #000; }
         #logs-container {
-            height: 400px;
+            height: 60vh;
             background-color: var(--logs-bg);
             border: 1px solid #333;
             padding: 10px;
@@ -96,10 +90,8 @@
         .log-line { display: flex; }
         .log-line .timestamp { color: #888; margin-right: 10px; flex-shrink: 0; }
         .progress-bar { transition: width 0.5s ease-in-out; }
-        .text-success { color: #28a745 !important; }
-        .text-danger { color: #dc3545 !important; }
-        .text-warning { color: #ffc107 !important; }
-        .text-info { color: #17a2b8 !important; }
+        .text-success { color: #28a745 !important; } .text-danger { color: #dc3545 !important; }
+        .text-warning { color: #ffc107 !important; } .text-info { color: #17a2b8 !important; }
 
         #captcha-modal { background-color: rgba(0,0,0,0.7); }
         .modal-footer { flex-wrap: wrap; }
@@ -107,24 +99,221 @@
 
         .admin-table { font-size: 0.8em; }
         .admin-table th, .admin-table td { padding: 0.4rem; }
-        .table-responsive { max-height: 300px; }
+        .table-responsive { max-height: 250px; }
+
+        .offcanvas { background-color: var(--card-bg); }
     </style>
 </head>
 <body>
-    <div class="container mt-4">
 
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <h4 class="mb-0">Welcome, {{ user.username }}!</h4>
-            <div>
-                {% if user.upgraded %}
-                    <span class="badge bg-success"><i class="bi bi-star-fill"></i> Upgraded Account</span>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg fixed-top">
+        <div class="container-fluid">
+            <button class="btn btn-primary" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-controls="sidebar">
+                <i class="bi bi-list"></i> Menu
+            </button>
+            <a class="navbar-brand mx-auto" href="#">Garena Account Checker</a>
+            <div class="d-flex align-items-center">
+                 {% if user.upgraded %}
+                    <span class="badge bg-success d-none d-sm-inline-block"><i class="bi bi-star-fill"></i> Upgraded</span>
                 {% else %}
-                    <span class="badge bg-secondary">Free Account (100 lines max)</span>
+                    <span class="badge bg-secondary d-none d-sm-inline-block">Free Tier</span>
                 {% endif %}
-                <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm ms-2"><i class="bi bi-box-arrow-right"></i> Logout</a>
+                <a href="{{ url_for('logout') }}" class="btn btn-outline-danger btn-sm ms-2"><i class="bi bi-box-arrow-right"></i></a>
             </div>
         </div>
+    </nav>
 
+    <!-- Sidebar (Offcanvas) -->
+    <div class="offcanvas offcanvas-start" tabindex="-1" id="sidebar" aria-labelledby="sidebarLabel">
+        <div class="offcanvas-header border-bottom border-secondary">
+            <h5 class="offcanvas-title" id="sidebarLabel">
+                <i class="bi bi-person-circle"></i> {{ user.username }}
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body">
+            
+            <!-- Sidebar Navigation -->
+            <ul class="nav nav-pills nav-fill mb-3" id="sidebar-tab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="controls-tab-btn" data-bs-toggle="pill" data-bs-target="#controls-tab" type="button" role="tab" aria-controls="controls-tab" aria-selected="true"><i class="bi bi-controller"></i> Controls</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="settings-tab-btn" data-bs-toggle="pill" data-bs-target="#settings-tab" type="button" role="tab" aria-controls="settings-tab" aria-selected="false"><i class="bi bi-gear"></i> Settings</button>
+                </li>
+                {% if user.username == 'admin' %}
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="admin-tab-btn" data-bs-toggle="pill" data-bs-target="#admin-tab" type="button" role="tab" aria-controls="admin-tab" aria-selected="false"><i class="bi bi-shield-lock"></i> Admin</button>
+                </li>
+                {% endif %}
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content" id="sidebar-tab-content">
+                
+                <!-- Controls Tab -->
+                <div class="tab-pane fade show active" id="controls-tab" role="tabpanel" aria-labelledby="controls-tab-btn">
+                    <h5 class="mb-3"><i class="bi bi-play-circle-fill"></i> Checker Controls</h5>
+                    <form id="start-form" action="{{ url_for('start_check') }}" method="POST" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="account_file" class="form-label">Account File (.txt)</label>
+                            <input class="form-control" type="file" id="account_file" name="account_file" required>
+                            {% if not user.upgraded %}
+                            <div class="form-text text-warning">Free tier is limited to 100 lines.</div>
+                            {% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="cookie_module" class="form-label">Cookie Module</label>
+                            <select class="form-select" id="cookie_module" name="cookie_module">
+                                <option value="ken_cookie" selected>Ken Cookie</option>
+                                <option value="change_cookie">Change Cookie (Enhanced)</option>
+                                <option value="set_cookie">Numbered Set (from config)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3" id="cookie-number-input-wrapper" style="display: none;">
+                            <label for="cookie_number_input" class="form-label">Use Fixed Cookie Number</label>
+                            <input type="number" class="form-control" id="cookie_number_input" name="cookie_number" min="1" placeholder="e.g., 200 (optional)">
+                            <div class="form-text">Leave empty to cycle through all cookies in the set.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Telegram Notifications</label>
+                            <div class="input-group mb-2">
+                                <span class="input-group-text"><i class="bi bi-robot"></i></span>
+                                <input type="text" class="form-control" name="telegram_bot_token" placeholder="Bot Token" value="{{ bot_token }}">
+                            </div>
+                            <div class="input-group mb-2">
+                                <span class="input-group-text"><i class="bi bi-person"></i></span>
+                                <input type="text" class="form-control" name="telegram_chat_id" placeholder="Chat ID" value="{{ chat_id }}">
+                            </div>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-filter-circle"></i></span>
+                                <select class="form-select" id="telegram_level_filter" name="telegram_level_filter">
+                                    <option value="all" selected>Send All Levels</option>
+                                    <option value="100+">Send Level 100+</option>
+                                    <option value="none">Disable Telegram</option>
+                                </select>
+                            </div>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" name="save_telegram_creds" id="save_telegram_creds" checked>
+                                <label class="form-check-label" for="save_telegram_creds">Save credentials for this session</label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="use_cookie_set" name="use_cookie_set">
+                                <label class="form-check-label" for="use_cookie_set">Use hardcoded cookies</label>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="auto_delete" name="auto_delete">
+                                <label class="form-check-label" for="auto_delete">Delete file on completion</label>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="force_restart" name="force_restart">
+                                <label class="form-check-label" for="force_restart">Start from beginning</label>
+                            </div>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button type="submit" id="start-btn" class="btn btn-primary"><i class="bi bi-play-circle-fill"></i> Start Checker</button>
+                            <button type="button" id="stop-btn" class="btn btn-danger" style="display: none;"><i class="bi bi-stop-circle-fill"></i> Stop Checker</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <!-- Settings Tab -->
+                <div class="tab-pane fade" id="settings-tab" role="tabpanel" aria-labelledby="settings-tab-btn">
+                     {% if not user.upgraded %}
+                    <div class="card bg-dark border-secondary mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title"><i class="bi bi-gem me-2"></i> Upgrade Account</h5>
+                            <p class="small">Redeem a key to unlock unlimited checking.</p>
+                            <form action="{{ url_for('redeem_key') }}" method="POST">
+                                <div class="input-group">
+                                    <input type="text" name="key" class="form-control" placeholder="Enter redemption key" required>
+                                    <button class="btn btn-success" type="submit">Redeem</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <div class="card bg-dark border-secondary">
+                        <div class="card-body">
+                           <h5 class="card-title"><i class="bi bi-palette-fill me-2"></i> Appearance & Credits</h5>
+                            <div class="mb-3">
+                                <label class="form-label">Main Theme Color</label>
+                                <div id="theme-selector" class="d-flex gap-2">
+                                    <button type="button" class="btn btn-sm w-100" style="background-color: #0d6efd;" data-theme="default" title="Default Blue"></button>
+                                    <button type="button" class="btn btn-sm w-100" style="background-color: #dc3545;" data-theme="danger" title="Red"></button>
+                                    <button type="button" class="btn btn-sm w-100" style="background-color: #28a745;" data-theme="success" title="Green"></button>
+                                    <button type="button" class="btn btn-sm w-100" style="background-color: #ffc107;" data-theme="warning" title="Yellow"></button>
+                                </div>
+                            </div>
+                            <div class="row g-2 mb-3">
+                                <div class="col-6"><label class="form-label small">Skull & Highlight</label><input type="color" id="highlight-color-picker" class="form-control" value="#dc3545"></div>
+                                <div class="col-6"><label class="form-label small">Page BG</label><input type="color" id="body-bg-picker" class="form-control" value="#121212"></div>
+                                <div class="col-6"><label class="form-label small">Card BG</label><input type="color" id="card-bg-picker" class="form-control" value="#1e1e1e"></div>
+                                <div class="col-6"><label class="form-label small">Logs BG</label><input type="color" id="logs-bg-picker" class="form-control" value="#0c0c0c"></div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="credits-text-input" class="form-label">Credits Text</label>
+                                <input type="text" class="form-control" id="credits-text-input" value="PAPA MO">
+                            </div>
+                            <button type="button" id="reset-appearance-btn" class="btn btn-sm btn-outline-secondary w-100">Reset Appearance</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Tab -->
+                {% if user.username == 'admin' %}
+                <div class="tab-pane fade" id="admin-tab" role="tabpanel" aria-labelledby="admin-tab-btn">
+                     <div class="d-grid mb-3">
+                        <button id="generate-key-btn" class="btn btn-info"><i class="bi bi-key-fill"></i> Generate New Key</button>
+                    </div>
+
+                    <div class="card bg-dark border-secondary mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title"><i class="bi bi-megaphone-fill"></i> Post Announcement</h5>
+                            <form id="announcement-form">
+                                <div class="mb-2">
+                                    <textarea id="announcement-message" class="form-control" rows="3" placeholder="Enter maintenance notice or update news..." required></textarea>
+                                </div>
+                                <div class="input-group">
+                                    <select id="announcement-type" class="form-select">
+                                        <option value="info" selected>Info (Blue)</option>
+                                        <option value="success">Success (Green)</option>
+                                        <option value="warning">Warning (Yellow)</option>
+                                        <option value="danger">Danger (Red)</option>
+                                    </select>
+                                    <button type="submit" id="post-announcement-btn" class="btn btn-primary">Post</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <h6><i class="bi bi-people-fill"></i> Registered Users</h6>
+                    <div class="table-responsive mb-3">
+                        <table class="table table-dark table-striped admin-table">
+                            <thead><tr><th>User</th><th>Email</th><th>Status</th></tr></thead>
+                            <tbody id="admin-users-table"><!-- Data will be loaded by JS --></tbody>
+                        </table>
+                    </div>
+                    <h6><i class="bi bi-ticket-detailed-fill"></i> Generated Keys</h6>
+                    <div class="table-responsive">
+                        <table class="table table-dark table-striped admin-table">
+                            <thead><tr><th>Key</th><th>Status</th></tr></thead>
+                            <tbody id="admin-keys-table"><!-- Data will be loaded by JS --></tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="container-fluid mt-4">
+        <div id="announcement-placeholder"></div>
+        
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
@@ -135,7 +324,7 @@
             {% endfor %}
           {% endif %}
         {% endwith %}
-
+        
         <div class="banner">
                           :::!~!!!!!:.          
                   .xUHWH!! !!?M88WHX:.       
@@ -160,218 +349,28 @@
 <span class="highlight" id="credits-span">            𝐏𝐫𝐞𝐬𝐞𝐧𝐭𝐞𝐝 𝐁𝐲: PAPA MO </span>
         </div>
 
-        <div class="row">
-            <!-- Control Panel -->
-            <div class="col-lg-4">
-                <div class="card mb-3">
-                    <div class="card-header">
-                        <h5><i class="bi bi-gear-fill"></i> Control Panel</h5>
-                    </div>
-                    <div class="card-body">
-                        <form id="start-form" action="{{ url_for('start_check') }}" method="POST" enctype="multipart/form-data">
-                            <div class="mb-3">
-                                <label for="account_file" class="form-label">Account File (.txt)</label>
-                                <input class="form-control" type="file" id="account_file" name="account_file" required>
-                                {% if not user.upgraded %}
-                                <div class="form-text text-warning">Free tier is limited to 100 lines.</div>
-                                {% endif %}
-                            </div>
-                            <div class="mb-3">
-                                <label for="cookie_module" class="form-label">Cookie Module</label>
-                                <select class="form-select" id="cookie_module" name="cookie_module">
-                                    <option value="ken_cookie" selected>Ken Cookie</option>
-                                    <option value="change_cookie">Change Cookie (Enhanced)</option>
-                                    <option value="set_cookie">Numbered Set (from config)</option>
-                                </select>
-                            </div>
-                            <!-- NEW: Number Input Field -->
-                            <div class="mb-3" id="cookie-number-input-wrapper" style="display: none;">
-                                <label for="cookie_number_input" class="form-label">Use Fixed Cookie Number</label>
-                                <input type="number" class="form-control" id="cookie_number_input" name="cookie_number" min="1" placeholder="e.g., 200 (optional)">
-                                <div class="form-text">Leave empty to cycle through all cookies in the set.</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Telegram Notifications</label>
-                                <div class="input-group mb-2">
-                                    <span class="input-group-text"><i class="bi bi-robot"></i></span>
-                                    <input type="text" class="form-control" name="telegram_bot_token" placeholder="Bot Token" value="{{ bot_token }}">
-                                </div>
-                                <div class="input-group mb-2">
-                                    <span class="input-group-text"><i class="bi bi-person"></i></span>
-                                    <input type="text" class="form-control" name="telegram_chat_id" placeholder="Chat ID" value="{{ chat_id }}">
-                                </div>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-filter-circle"></i></span>
-                                    <select class="form-select" id="telegram_level_filter" name="telegram_level_filter">
-                                        <option value="all" selected>Send All Levels to Telegram</option>
-                                        <option value="100+">Send Level 100+ to Telegram</option>
-                                        <option value="none">Disable Telegram Notifications</option>
-                                    </select>
-                                </div>
-                                <div class="form-check mt-2">
-                                    <input class="form-check-input" type="checkbox" name="save_telegram_creds" id="save_telegram_creds" checked>
-                                    <label class="form-check-label" for="save_telegram_creds">Save credentials for next time</label>
-                                </div>
-                            </div>
-                            <div class="mb-3">
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" role="switch" id="use_cookie_set" name="use_cookie_set">
-                                    <label class="form-check-label" for="use_cookie_set">Use hardcoded cookies from `cookie_config.py`</label>
-                                </div>
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" role="switch" id="auto_delete" name="auto_delete">
-                                    <label class="form-check-label" for="auto_delete">Delete account file on completion</label>
-                                </div>
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" role="switch" id="force_restart" name="force_restart">
-                                    <label class="form-check-label" for="force_restart">Start from beginning (ignore saved progress)</label>
-                                </div>
-                            </div>
-                            <div class="d-grid gap-2">
-                                <button type="submit" id="start-btn" class="btn btn-primary"><i class="bi bi-play-circle-fill"></i> Start Checker</button>
-                                <button type="button" id="stop-btn" class="btn btn-danger" style="display: none;"><i class="bi bi-stop-circle-fill"></i> Stop Checker</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-
-                <!-- Account & Appearance Settings -->
-                <div class="accordion" id="settingsAccordion">
-
-                    <!-- Upgrade Account -->
-                    {% if not user.upgraded %}
-                    <div class="accordion-item bg-dark border-secondary">
-                        <h2 class="accordion-header">
-                            <button class="accordion-button bg-dark text-white collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#upgrade-account">
-                                <i class="bi bi-gem me-2"></i> Upgrade Account
-                            </button>
-                        </h2>
-                        <div id="upgrade-account" class="accordion-collapse collapse">
-                            <div class="accordion-body">
-                                <p>Redeem a key to unlock unlimited checking.</p>
-                                <form action="{{ url_for('redeem_key') }}" method="POST">
-                                    <div class="input-group">
-                                        <input type="text" name="key" class="form-control" placeholder="Enter redemption key" required>
-                                        <button class="btn btn-success" type="submit">Redeem</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-
-                    <!-- Admin Panel -->
-                    {% if user.username == 'admin' %}
-                    <div class="accordion-item bg-dark border-secondary">
-                        <h2 class="accordion-header">
-                            <button class="accordion-button bg-dark text-white collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#admin-panel">
-                                <i class="bi bi-person-badge-fill me-2"></i> Admin Panel
-                            </button>
-                        </h2>
-                        <div id="admin-panel" class="accordion-collapse collapse">
-                            <div class="accordion-body">
-                                <div class="d-grid mb-3">
-                                    <button id="generate-key-btn" class="btn btn-info"><i class="bi bi-key-fill"></i> Generate New Key</button>
-                                </div>
-                                
-                                <h6><i class="bi bi-people-fill"></i> Registered Users</h6>
-                                <div class="table-responsive mb-3">
-                                    <table class="table table-dark table-striped admin-table">
-                                        <thead><tr><th>User</th><th>Email</th><th>Status</th></tr></thead>
-                                        <tbody id="admin-users-table">
-                                            <!-- Data will be loaded by JS -->
-                                        </tbody>
-                                    </table>
-                                </div>
-
-                                <h6><i class="bi bi-ticket-detailed-fill"></i> Generated Keys</h6>
-                                <div class="table-responsive">
-                                    <table class="table table-dark table-striped admin-table">
-                                        <thead><tr><th>Key</th><th>Status</th></tr></thead>
-                                        <tbody id="admin-keys-table">
-                                            <!-- Data will be loaded by JS -->
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endif %}
-                    
-                    <!-- Appearance Settings -->
-                    <div class="accordion-item bg-dark border-secondary">
-                         <h2 class="accordion-header">
-                            <button class="accordion-button bg-dark text-white collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#appearance-settings">
-                                <i class="bi bi-palette-fill me-2"></i> Appearance & Credits
-                            </button>
-                        </h2>
-                        <div id="appearance-settings" class="accordion-collapse collapse">
-                            <div class="accordion-body">
-                                <div class="mb-3">
-                                    <label for="theme-selector" class="form-label">Main Theme Color</label>
-                                    <div id="theme-selector" class="d-flex gap-2">
-                                        <button type="button" class="btn btn-sm w-100" style="background-color: #0d6efd;" data-theme="default" title="Default Blue"></button>
-                                        <button type="button" class="btn btn-sm w-100" style="background-color: #dc3545;" data-theme="danger" title="Red"></button>
-                                        <button type="button" class="btn btn-sm w-100" style="background-color: #28a745;" data-theme="success" title="Green"></button>
-                                        <button type="button" class="btn btn-sm w-100" style="background-color: #ffc107;" data-theme="warning" title="Yellow"></button>
-                                    </div>
-                                </div>
-                                <div class="row g-2 mb-3">
-                                    <div class="col-6">
-                                        <label for="highlight-color-picker" class="form-label small">Skull & Highlight</label>
-                                        <input type="color" id="highlight-color-picker" class="form-control" value="#dc3545">
-                                    </div>
-                                    <div class="col-6">
-                                        <label for="body-bg-picker" class="form-label small">Page BG</label>
-                                        <input type="color" id="body-bg-picker" class="form-control" value="#121212">
-                                    </div>
-                                    <div class="col-6">
-                                        <label for="card-bg-picker" class="form-label small">Card BG</label>
-                                        <input type="color" id="card-bg-picker" class="form-control" value="#1e1e1e">
-                                    </div>
-                                    <div class="col-6">
-                                        <label for="logs-bg-picker" class="form-label small">Logs BG</label>
-                                        <input type="color" id="logs-bg-picker" class="form-control" value="#0c0c0c">
-                                    </div>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="credits-text-input" class="form-label">Credits Text</label>
-                                    <input type="text" class="form-control" id="credits-text-input" value="PAPA MO">
-                                </div>
-                                <button type="button" id="reset-appearance-btn" class="btn btn-sm btn-outline-secondary w-100">Reset Appearance</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-terminal-fill"></i> Live Status</h5>
             </div>
-
-            <!-- Status and Logs -->
-            <div class="col-lg-8">
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="bi bi-terminal-fill"></i> Live Status</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="progress mb-3" role="progressbar" style="height: 25px;">
-                            <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div>
-                        </div>
-                        <div class="d-flex justify-content-between mb-2 text-muted">
-                            <small id="progress-text">Checked: 0 / 0</small>
-                            <small id="current-account-text">Status: Idle</small>
-                        </div>
-                        <div id="stats-container" class="d-flex flex-wrap justify-content-around small p-2 rounded bg-dark mb-3">
-                            <span><i class="bi bi-check-circle-fill text-success"></i> Hits: <span id="stats-hits">0</span></span>
-                            <span><i class="bi bi-x-circle-fill text-danger"></i> Fails: <span id="stats-fails">0</span></span>
-                            <span><i class="bi bi-key-fill text-warning"></i> Wrong Pass: <span id="stats-wrongpass">0</span></span>
-                            <span><i class="bi bi-shield-fill-check text-success"></i> Clean: <span id="stats-clean">0</span></span>
-                            <span><i class="bi bi-shield-fill-exclamation text-warning"></i> Not Clean: <span id="stats-notclean">0</span></span>
-                            <span><i class="bi bi-send-fill text-info"></i> TG Sent: <span id="stats-tgsent">0</span></span>
-                            <span><i class="bi bi-robot text-danger"></i> CAPTCHA: <span id="stats-captcha">0</span></span>
-                        </div>
-                        <div id="logs-container"></div>
-                    </div>
+            <div class="card-body">
+                <div class="progress mb-3" role="progressbar" style="height: 25px;">
+                    <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div>
                 </div>
+                <div class="d-flex justify-content-between mb-2 text-muted">
+                    <small id="progress-text">Checked: 0 / 0</small>
+                    <small id="current-account-text">Status: Idle</small>
+                </div>
+                <div id="stats-container" class="d-flex flex-wrap justify-content-around small p-2 rounded bg-dark mb-3">
+                    <span><i class="bi bi-check-circle-fill text-success"></i> Hits: <span id="stats-hits">0</span></span>
+                    <span><i class="bi bi-x-circle-fill text-danger"></i> Fails: <span id="stats-fails">0</span></span>
+                    <span><i class="bi bi-key-fill text-warning"></i> Wrong Pass: <span id="stats-wrongpass">0</span></span>
+                    <span><i class="bi bi-shield-fill-check text-success"></i> Clean: <span id="stats-clean">0</span></span>
+                    <span><i class="bi bi-shield-fill-exclamation text-warning"></i> Not Clean: <span id="stats-notclean">0</span></span>
+                    <span><i class="bi bi-send-fill text-info"></i> TG Sent: <span id="stats-tgsent">0</span></span>
+                    <span><i class="bi bi-robot text-danger"></i> CAPTCHA: <span id="stats-captcha">0</span></span>
+                </div>
+                <div id="logs-container"></div>
             </div>
         </div>
     </div>
@@ -384,7 +383,7 @@
                     <h5 class="modal-title"><i class="bi bi-shield-lock-fill"></i> CAPTCHA Detected</h5>
                 </div>
                 <div class="modal-body">
-                    <p>The checker is paused. A cookie was likely blocked. The bad cookie has been put on a 5-minute cooldown.</p>
+                    <p>The checker is paused. The current cookie was blocked and has been put on a 5-minute cooldown.</p>
                     <p>Please choose an action:</p>
                 </div>
                 <div class="modal-footer d-flex justify-content-center">
@@ -429,18 +428,18 @@
             const creditsSpan = document.getElementById('credits-span');
             const resetAppearanceBtn = document.getElementById('reset-appearance-btn');
             
-            // NEW: Cookie number input elements
             const cookieModuleSelect = document.getElementById('cookie_module');
             const cookieNumberWrapper = document.getElementById('cookie-number-input-wrapper');
 
-            // NEW: Admin Panel Elements
+            // Admin Panel Elements
             const generateKeyBtn = document.getElementById('generate-key-btn');
             const adminUsersTable = document.getElementById('admin-users-table');
             const adminKeysTable = document.getElementById('admin-keys-table');
+            const announcementForm = document.getElementById('announcement-form');
+            const announcementPlaceholder = document.getElementById('announcement-placeholder');
             
             let statusInterval;
             let lastLogCount = 0;
-            
             const APPEARANCE_STORAGE_KEY = 'garenaCheckerAppearance';
 
             // --- APPEARANCE & CREDITS LOGIC ---
@@ -453,17 +452,11 @@
                     logsBg: logsBgPicker.value,
                     creditsText: creditsTextInput.value
                 };
-
-                // Apply CSS variables
                 htmlElement.style.setProperty('--highlight-color', settings.highlightColor);
                 htmlElement.style.setProperty('--body-bg', settings.bodyBg);
                 htmlElement.style.setProperty('--card-bg', settings.cardBg);
                 htmlElement.style.setProperty('--logs-bg', settings.logsBg);
-                
-                // Apply credits text
                 creditsSpan.textContent = `            𝐏𝐫𝐞𝐬𝐞𝐧𝐭𝐞𝐝 𝐁𝐲: ${settings.creditsText} `;
-                
-                // Save to localStorage
                 localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify(settings));
             }
 
@@ -478,7 +471,6 @@
                     logsBgPicker.value = settings.logsBg;
                     creditsTextInput.value = settings.creditsText;
                 }
-                // Apply the loaded (or default) settings
                 applyAndSaveAppearance();
             }
             
@@ -488,45 +480,38 @@
                     applyAndSaveAppearance();
                 });
             });
-
-            [highlightColorPicker, bodyBgPicker, cardBgPicker, logsBgPicker].forEach(picker => {
-                picker.addEventListener('input', applyAndSaveAppearance);
+            [highlightColorPicker, bodyBgPicker, cardBgPicker, logsBgPicker, creditsTextInput].forEach(el => {
+                el.addEventListener('input', applyAndSaveAppearance);
             });
-            creditsTextInput.addEventListener('input', applyAndSaveAppearance);
-
             resetAppearanceBtn.addEventListener('click', () => {
                 localStorage.removeItem(APPEARANCE_STORAGE_KEY);
                 location.reload();
             });
             
             loadAppearance();
-            // --- END APPEARANCE & CREDITS LOGIC ---
             
-            // --- LOGIC FOR COOKIE NUMBER INPUT ---
+            // --- COOKIE NUMBER INPUT LOGIC ---
             function toggleCookieNumberInput() {
-                if (cookieModuleSelect.value === 'set_cookie') {
-                    cookieNumberWrapper.style.display = 'block';
-                } else {
-                    cookieNumberWrapper.style.display = 'none';
-                }
+                cookieNumberWrapper.style.display = (cookieModuleSelect.value === 'set_cookie') ? 'block' : 'none';
             }
-            
             cookieModuleSelect.addEventListener('change', toggleCookieNumberInput);
             toggleCookieNumberInput();
 
             function updateUI(status) {
                 if (status.running) {
-                    startBtn.style.display = 'none';
-                    stopBtn.style.display = 'block';
+                    startBtn.style.display = 'none'; stopBtn.style.display = 'block';
+                    document.querySelectorAll('#sidebar input, #sidebar select, #sidebar button').forEach(el => {
+                        if (el.id !== 'stop-btn') el.disabled = true;
+                    });
                 } else {
-                    startBtn.style.display = 'block';
-                    stopBtn.style.display = 'none';
+                    startBtn.style.display = 'block'; stopBtn.style.display = 'none';
+                    document.querySelectorAll('#sidebar input, #sidebar select, #sidebar button').forEach(el => el.disabled = false);
                     if (statusInterval) { clearInterval(statusInterval); }
                 }
 
                 const progress = status.total > 0 ? (status.progress / status.total) * 100 : 0;
-                progressBar.style.width = progress.toFixed(2) + '%';
-                progressBar.textContent = progress.toFixed(0) + '%';
+                progressBar.style.width = `${progress.toFixed(2)}%`;
+                progressBar.textContent = `${progress.toFixed(0)}%`;
                 progressText.textContent = `Checked: ${status.progress} / ${status.total}`;
                 currentAccountText.textContent = `Current: ${status.current_account || 'N/A'}`;
 
@@ -552,8 +537,7 @@
                     lastLogCount = status.logs.length;
                 }
                 
-                if (status.captcha_detected) { captchaModal.show(); } 
-                else { captchaModal.hide(); }
+                if (status.captcha_detected) { captchaModal.show(); } else { captchaModal.hide(); }
                 
                 if(status.final_summary && !status.running) {
                     const summaryElement = document.createElement('pre');
@@ -566,52 +550,30 @@
 
             function fetchStatus() {
                 fetch('/status').then(response => {
-                    if (response.status === 401) {
-                        window.location.href = '/login';
-                        return;
-                    }
+                    if (response.status === 401) { window.location.href = '/login'; return; }
                     return response.json();
-                }).then(data => {
-                    if(data) updateUI(data);
-                }).catch(error => {
-                    console.error('Error fetching status:', error);
-                    if (statusInterval) clearInterval(statusInterval);
-                });
+                }).then(data => { if(data) updateUI(data);
+                }).catch(error => { console.error('Error fetching status:', error); if (statusInterval) clearInterval(statusInterval); });
             }
 
             startForm.addEventListener('submit', function (e) {
-                const accountFile = document.getElementById('account_file');
-                if (!accountFile.files || accountFile.files.length === 0) {
-                    // This is a redundant check as 'required' handles it, but good practice.
-                    e.preventDefault();
-                    alert("Please select an account file.");
-                    return;
-                }
+                if (!document.getElementById('account_file').files.length) { e.preventDefault(); alert("Please select an account file."); return; }
                 startBtn.disabled = true;
-                startBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Starting...';
-                
-                setTimeout(() => {
-                    lastLogCount = 0;
-                    logsContainer.innerHTML = '';
-                    statusInterval = setInterval(fetchStatus, 1500);
-                }, 500);
+                startBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Starting...';
+                setTimeout(() => { lastLogCount = 0; logsContainer.innerHTML = ''; statusInterval = setInterval(fetchStatus, 1500); }, 500);
             });
 
             stopBtn.addEventListener('click', function () {
                 fetch('/stop_check', { method: 'POST' }).then(response => response.json()).then(data => {
-                    console.log(data.message);
-                    stopBtn.disabled = true;
-                    stopBtn.textContent = "Stopping...";
+                    console.log(data.message); stopBtn.disabled = true; stopBtn.textContent = "Stopping...";
                 });
             });
             
             document.querySelectorAll('.captcha-action-btn').forEach(button => {
                 button.addEventListener('click', function() {
-                    const action = this.dataset.action;
                     fetch('/captcha_action', { 
-                        method: 'POST', 
-                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                        body: new URLSearchParams({action: action})
+                        method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: new URLSearchParams({action: this.dataset.action})
                     });
                     captchaModal.hide();
                 });
@@ -621,14 +583,11 @@
             function loadAdminData() {
                 if (!adminUsersTable || !adminKeysTable) return;
                 fetch('/admin/data').then(res => res.json()).then(data => {
-                    // Populate Users Table
                     adminUsersTable.innerHTML = '';
                     data.users.forEach(user => {
                         const statusBadge = user.upgraded ? '<span class="badge bg-success">Upgraded</span>' : '<span class="badge bg-secondary">Free</span>';
                         adminUsersTable.innerHTML += `<tr><td>${user.username}</td><td>${user.email}</td><td>${statusBadge}</td></tr>`;
                     });
-
-                    // Populate Keys Table
                     adminKeysTable.innerHTML = '';
                     data.keys.forEach(key => {
                         const status = key.redeemed_by ? `<span class="badge bg-danger">Used by ${key.redeemed_by}</span>` : '<span class="badge bg-success">Available</span>';
@@ -641,23 +600,54 @@
                 generateKeyBtn.addEventListener('click', () => {
                     generateKeyBtn.disabled = true;
                     generateKeyBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating...';
-                    fetch('/admin/generate_key', { method: 'POST' })
-                        .then(res => res.json())
-                        .then(data => {
-                            if (data.status === 'success') {
-                                alert(`New Key Generated: ${data.key}`);
-                                loadAdminData(); // Refresh table
-                            } else {
-                                alert('Failed to generate key.');
-                            }
-                        }).finally(() => {
-                            generateKeyBtn.disabled = false;
-                            generateKeyBtn.innerHTML = '<i class="bi bi-key-fill"></i> Generate New Key';
-                        });
+                    fetch('/admin/generate_key', { method: 'POST' }).then(res => res.json()).then(data => {
+                        if (data.status === 'success') { alert(`New Key Generated: ${data.key}`); loadAdminData(); } 
+                        else { alert('Failed to generate key.'); }
+                    }).finally(() => { generateKeyBtn.disabled = false; generateKeyBtn.innerHTML = '<i class="bi bi-key-fill"></i> Generate New Key'; });
                 });
-                // Also load data when the admin panel is shown
-                document.getElementById('admin-panel').addEventListener('shown.bs.collapse', loadAdminData);
+                document.getElementById('admin-tab-btn').addEventListener('click', loadAdminData);
             }
+
+            if(announcementForm) {
+                announcementForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const message = document.getElementById('announcement-message').value;
+                    const msg_type = document.getElementById('announcement-type').value;
+                    const btn = document.getElementById('post-announcement-btn');
+                    btn.disabled = true;
+                    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+                    fetch('/admin/post_announcement', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: message, msg_type: msg_type })
+                    }).then(res => res.json()).then(data => {
+                        if (data.status === 'success') {
+                            alert('Announcement posted!');
+                            announcementForm.reset();
+                        } else {
+                            alert('Error: ' + data.message);
+                        }
+                    }).finally(() => { btn.disabled = false; btn.innerHTML = 'Post'; });
+                });
+            }
+
+            // --- ANNOUNCEMENT FETCH LOGIC ---
+            function fetchLatestAnnouncement() {
+                fetch('/get_latest_announcement').then(res => res.json()).then(data => {
+                    if (data && localStorage.getItem('dismissedAnnouncement') !== data.id) {
+                        const alertHTML = `
+                            <div class="alert alert-${data.type} alert-dismissible fade show" role="alert">
+                                <strong><i class="bi bi-info-circle-fill"></i> Admin Notice:</strong> ${data.message}
+                                <button type="button" class="btn-close" data-announcement-id="${data.id}" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>`;
+                        announcementPlaceholder.innerHTML = alertHTML;
+                        announcementPlaceholder.querySelector('.btn-close').addEventListener('click', function() {
+                            localStorage.setItem('dismissedAnnouncement', this.dataset.announcementId);
+                        });
+                    }
+                });
+            }
+            fetchLatestAnnouncement();
 
             // Initial status check
             fetchStatus();
