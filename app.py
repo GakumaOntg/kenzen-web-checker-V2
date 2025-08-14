@@ -60,7 +60,9 @@ init(autoreset=True)
 # --- Flask App Setup ---
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.secret_key = os.urandom(24) # Needed for session management
+# FIXED: Use a static secret key, preferably from an environment variable.
+# This prevents sessions from becoming invalid every time the app restarts.
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "you-must-set-a-very-secret-key")
 
 # Create temporary directories on Vercel
 for folder in [DATA_DIR, UPLOAD_FOLDER, RESULTS_BASE_DIR, LOGS_BASE_DIR, APP_DATA_DIR]:
