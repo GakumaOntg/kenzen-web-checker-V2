@@ -33,6 +33,8 @@
             background-color: var(--card-bg);
             border-bottom: 1px solid #333;
         }
+        .countdown-timer { font-size: 0.8em; font-weight: bold; }
+        .countdown-timer.ending-soon { color: #dc3545 !important; background-color: #ffc107 !important; }
         .banner {
             font-family: 'Courier New', Courier, monospace;
             white-space: pre;
@@ -114,8 +116,10 @@
             </button>
             <a class="navbar-brand mx-auto" href="#">Garena Account Checker</a>
             <div class="d-flex align-items-center">
-                 {% if user.upgraded %}
-                    <span class="badge bg-success d-none d-sm-inline-block"><i class="bi bi-star-fill"></i> Upgraded</span>
+                 {% if is_upgraded %}
+                    <span id="countdown-timer" class="badge countdown-timer bg-success me-2" data-expires-at="{{ user.upgrade_expires_at }}">
+                        <i class="bi bi-stopwatch"></i> Loading...
+                    </span>
                 {% else %}
                     <span class="badge bg-secondary d-none d-sm-inline-block">Free Tier</span>
                 {% endif %}
@@ -134,7 +138,6 @@
         </div>
         <div class="offcanvas-body">
             
-            <!-- Sidebar Navigation -->
             <ul class="nav nav-pills nav-fill mb-3" id="sidebar-tab" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="controls-tab-btn" data-bs-toggle="pill" data-bs-target="#controls-tab" type="button" role="tab" aria-controls="controls-tab" aria-selected="true"><i class="bi bi-controller"></i> Controls</button>
@@ -149,17 +152,15 @@
                 {% endif %}
             </ul>
 
-            <!-- Tab Content -->
             <div class="tab-content" id="sidebar-tab-content">
                 
-                <!-- Controls Tab -->
                 <div class="tab-pane fade show active" id="controls-tab" role="tabpanel" aria-labelledby="controls-tab-btn">
                     <h5 class="mb-3"><i class="bi bi-play-circle-fill"></i> Checker Controls</h5>
                     <form id="start-form" action="{{ url_for('start_check') }}" method="POST" enctype="multipart/form-data">
                         <div class="mb-3">
                             <label for="account_file" class="form-label">Account File (.txt)</label>
                             <input class="form-control" type="file" id="account_file" name="account_file" required>
-                            {% if not user.upgraded %}
+                            {% if not is_upgraded %}
                             <div class="form-text text-warning">Free tier is limited to 100 lines.</div>
                             {% endif %}
                         </div>
@@ -174,7 +175,7 @@
                         <div class="mb-3" id="cookie-number-input-wrapper" style="display: none;">
                             <label for="cookie_number_input" class="form-label">Use Fixed Cookie Number</label>
                             <input type="number" class="form-control" id="cookie_number_input" name="cookie_number" min="1" placeholder="e.g., 200 (optional)">
-                            <div class="form-text">Leave empty to cycle through all cookies in the set.</div>
+                            <div class="form-text">Leave empty to cycle.</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Telegram Notifications</label>
@@ -220,9 +221,8 @@
                     </form>
                 </div>
                 
-                <!-- Settings Tab -->
                 <div class="tab-pane fade" id="settings-tab" role="tabpanel" aria-labelledby="settings-tab-btn">
-                     {% if not user.upgraded %}
+                     {% if not is_upgraded %}
                     <div class="card bg-dark border-secondary mb-3">
                         <div class="card-body">
                             <h5 class="card-title"><i class="bi bi-gem me-2"></i> Upgrade Account</h5>
@@ -263,13 +263,17 @@
                     </div>
                 </div>
 
-                <!-- Admin Tab -->
                 {% if user.username == 'admin' %}
                 <div class="tab-pane fade" id="admin-tab" role="tabpanel" aria-labelledby="admin-tab-btn">
-                     <div class="d-grid mb-3">
-                        <button id="generate-key-btn" class="btn btn-info"><i class="bi bi-key-fill"></i> Generate New Key</button>
+                    <div class="card bg-dark border-secondary mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title"><i class="bi bi-key-fill"></i> Generate New Key</h5>
+                            <div class="input-group">
+                                <input type="number" id="key-duration-days" class="form-control" value="7" min="1" placeholder="Duration in days">
+                                <button id="generate-key-btn" class="btn btn-info">Generate Key</button>
+                            </div>
+                        </div>
                     </div>
-
                     <div class="card bg-dark border-secondary mb-3">
                         <div class="card-body">
                             <h5 class="card-title"><i class="bi bi-megaphone-fill"></i> Post Announcement</h5>
@@ -293,15 +297,15 @@
                     <h6><i class="bi bi-people-fill"></i> Registered Users</h6>
                     <div class="table-responsive mb-3">
                         <table class="table table-dark table-striped admin-table">
-                            <thead><tr><th>User</th><th>Email</th><th>Status</th></tr></thead>
-                            <tbody id="admin-users-table"><!-- Data will be loaded by JS --></tbody>
+                            <thead><tr><th>User</th><th>Status</th><th>Time Left</th></tr></thead>
+                            <tbody id="admin-users-table"></tbody>
                         </table>
                     </div>
                     <h6><i class="bi bi-ticket-detailed-fill"></i> Generated Keys</h6>
                     <div class="table-responsive">
                         <table class="table table-dark table-striped admin-table">
-                            <thead><tr><th>Key</th><th>Status</th></tr></thead>
-                            <tbody id="admin-keys-table"><!-- Data will be loaded by JS --></tbody>
+                            <thead><tr><th>Key</th><th>Duration</th><th>Status</th></tr></thead>
+                            <tbody id="admin-keys-table"></tbody>
                         </table>
                     </div>
                 </div>
@@ -310,7 +314,6 @@
         </div>
     </div>
     
-    <!-- Main Content -->
     <div class="container-fluid mt-4">
         <div id="announcement-placeholder"></div>
         
@@ -400,7 +403,6 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            // Main UI elements
             const startForm = document.getElementById('start-form');
             const startBtn = document.getElementById('start-btn');
             const stopBtn = document.getElementById('stop-btn');
@@ -416,8 +418,6 @@
             const statsTgSent = document.getElementById('stats-tgsent');
             const statsCaptcha = document.getElementById('stats-captcha');
             const captchaModal = new bootstrap.Modal(document.getElementById('captcha-modal'));
-            
-            // Appearance and Credits Elements
             const htmlElement = document.documentElement;
             const themeButtons = document.querySelectorAll('#theme-selector button');
             const highlightColorPicker = document.getElementById('highlight-color-picker');
@@ -427,11 +427,8 @@
             const creditsTextInput = document.getElementById('credits-text-input');
             const creditsSpan = document.getElementById('credits-span');
             const resetAppearanceBtn = document.getElementById('reset-appearance-btn');
-            
             const cookieModuleSelect = document.getElementById('cookie_module');
             const cookieNumberWrapper = document.getElementById('cookie-number-input-wrapper');
-
-            // Admin Panel Elements
             const generateKeyBtn = document.getElementById('generate-key-btn');
             const adminUsersTable = document.getElementById('admin-users-table');
             const adminKeysTable = document.getElementById('admin-keys-table');
@@ -442,14 +439,36 @@
             let lastLogCount = 0;
             const APPEARANCE_STORAGE_KEY = 'garenaCheckerAppearance';
 
-            // --- APPEARANCE & CREDITS LOGIC ---
+            const countdownElement = document.getElementById('countdown-timer');
+            if (countdownElement) {
+                const expiresAt = new Date(countdownElement.dataset.expiresAt).getTime();
+                const countdownInterval = setInterval(() => {
+                    const now = new Date().getTime();
+                    const distance = expiresAt - now;
+                    if (distance < 0) {
+                        clearInterval(countdownInterval);
+                        countdownElement.innerHTML = `<i class="bi bi-hourglass-split"></i> Subscription Expired`;
+                        countdownElement.classList.remove('bg-success', 'ending-soon');
+                        countdownElement.classList.add('bg-danger');
+                        return;
+                    }
+                    const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+                    const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                    const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+                    countdownElement.innerHTML = `<i class="bi bi-stopwatch"></i> Time Left: ${days}d ${hours}h ${minutes}m ${seconds}s`;
+                    if (distance < (1000 * 60 * 60 * 24)) {
+                        countdownElement.classList.remove('bg-success');
+                        countdownElement.classList.add('ending-soon');
+                    }
+                }, 1000);
+            }
+
             function applyAndSaveAppearance() {
                 const settings = {
                     mainTheme: htmlElement.getAttribute('data-theme-color') || 'default',
-                    highlightColor: highlightColorPicker.value,
-                    bodyBg: bodyBgPicker.value,
-                    cardBg: cardBgPicker.value,
-                    logsBg: logsBgPicker.value,
+                    highlightColor: highlightColorPicker.value, bodyBg: bodyBgPicker.value,
+                    cardBg: cardBgPicker.value, logsBg: logsBgPicker.value,
                     creditsText: creditsTextInput.value
                 };
                 htmlElement.style.setProperty('--highlight-color', settings.highlightColor);
@@ -466,10 +485,8 @@
                     const settings = JSON.parse(savedSettings);
                     htmlElement.setAttribute('data-theme-color', settings.mainTheme);
                     highlightColorPicker.value = settings.highlightColor;
-                    bodyBgPicker.value = settings.bodyBg;
-                    cardBgPicker.value = settings.cardBg;
-                    logsBgPicker.value = settings.logsBg;
-                    creditsTextInput.value = settings.creditsText;
+                    bodyBgPicker.value = settings.bodyBg; cardBgPicker.value = settings.cardBg;
+                    logsBgPicker.value = settings.logsBg; creditsTextInput.value = settings.creditsText;
                 }
                 applyAndSaveAppearance();
             }
@@ -490,7 +507,6 @@
             
             loadAppearance();
             
-            // --- COOKIE NUMBER INPUT LOGIC ---
             function toggleCookieNumberInput() {
                 cookieNumberWrapper.style.display = (cookieModuleSelect.value === 'set_cookie') ? 'block' : 'none';
             }
@@ -508,13 +524,11 @@
                     document.querySelectorAll('#sidebar input, #sidebar select, #sidebar button').forEach(el => el.disabled = false);
                     if (statusInterval) { clearInterval(statusInterval); }
                 }
-
                 const progress = status.total > 0 ? (status.progress / status.total) * 100 : 0;
                 progressBar.style.width = `${progress.toFixed(2)}%`;
                 progressBar.textContent = `${progress.toFixed(0)}%`;
                 progressText.textContent = `Checked: ${status.progress} / ${status.total}`;
                 currentAccountText.textContent = `Current: ${status.current_account || 'N/A'}`;
-
                 if (status.stats) {
                     statsHits.textContent = status.stats.successful || 0;
                     statsFails.textContent = status.stats.failed || 0;
@@ -524,7 +538,6 @@
                     statsTgSent.textContent = status.stats.telegram_sent || 0;
                     statsCaptcha.textContent = status.stats.captcha_count || 0;
                 }
-
                 if (status.logs && status.logs.length > lastLogCount) {
                     const newLogs = status.logs.slice(lastLogCount);
                     newLogs.forEach(log => {
@@ -536,9 +549,7 @@
                     logsContainer.scrollTop = logsContainer.scrollHeight;
                     lastLogCount = status.logs.length;
                 }
-                
                 if (status.captcha_detected) { captchaModal.show(); } else { captchaModal.hide(); }
-                
                 if(status.final_summary && !status.running) {
                     const summaryElement = document.createElement('pre');
                     summaryElement.className = 'text-success p-2 mt-2 border border-success rounded';
@@ -579,31 +590,50 @@
                 });
             });
             
-            // --- ADMIN PANEL LOGIC ---
             function loadAdminData() {
                 if (!adminUsersTable || !adminKeysTable) return;
                 fetch('/admin/data').then(res => res.json()).then(data => {
                     adminUsersTable.innerHTML = '';
                     data.users.forEach(user => {
-                        const statusBadge = user.upgraded ? '<span class="badge bg-success">Upgraded</span>' : '<span class="badge bg-secondary">Free</span>';
-                        adminUsersTable.innerHTML += `<tr><td>${user.username}</td><td>${user.email}</td><td>${statusBadge}</td></tr>`;
+                        let statusBadge;
+                        if (user.status === 'Active') {
+                            statusBadge = `<span class="badge bg-success">${user.status}</span>`;
+                        } else if (user.status === 'Expired') {
+                            statusBadge = `<span class="badge bg-danger">${user.status}</span>`;
+                        } else {
+                            statusBadge = `<span class="badge bg-secondary">${user.status}</span>`;
+                        }
+                        adminUsersTable.innerHTML += `<tr><td>${user.username}</td><td>${statusBadge}</td><td>${user.time_left}</td></tr>`;
                     });
                     adminKeysTable.innerHTML = '';
                     data.keys.forEach(key => {
                         const status = key.redeemed_by ? `<span class="badge bg-danger">Used by ${key.redeemed_by}</span>` : '<span class="badge bg-success">Available</span>';
-                        adminKeysTable.innerHTML += `<tr><td><code>${key.key}</code></td><td>${status}</td></tr>`;
+                        const duration = `${key.duration_days} Day(s)`;
+                        adminKeysTable.innerHTML += `<tr><td><code>${key.key}</code></td><td>${duration}</td><td>${status}</td></tr>`;
                     });
                 });
             }
 
             if (generateKeyBtn) {
                 generateKeyBtn.addEventListener('click', () => {
+                    const duration = document.getElementById('key-duration-days').value;
                     generateKeyBtn.disabled = true;
-                    generateKeyBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating...';
-                    fetch('/admin/generate_key', { method: 'POST' }).then(res => res.json()).then(data => {
-                        if (data.status === 'success') { alert(`New Key Generated: ${data.key}`); loadAdminData(); } 
-                        else { alert('Failed to generate key.'); }
-                    }).finally(() => { generateKeyBtn.disabled = false; generateKeyBtn.innerHTML = '<i class="bi bi-key-fill"></i> Generate New Key'; });
+                    generateKeyBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+                    fetch('/admin/generate_key', { 
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ duration: duration })
+                    })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                alert(`New ${data.duration}-day Key Generated: ${data.key}`);
+                                loadAdminData();
+                            } else { alert('Failed to generate key.'); }
+                        }).finally(() => {
+                            generateKeyBtn.disabled = false;
+                            generateKeyBtn.textContent = 'Generate Key';
+                        });
                 });
                 document.getElementById('admin-tab-btn').addEventListener('click', loadAdminData);
             }
@@ -614,9 +644,7 @@
                     const message = document.getElementById('announcement-message').value;
                     const msg_type = document.getElementById('announcement-type').value;
                     const btn = document.getElementById('post-announcement-btn');
-                    btn.disabled = true;
-                    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-
+                    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
                     fetch('/admin/post_announcement', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ message: message, msg_type: msg_type })
@@ -624,14 +652,11 @@
                         if (data.status === 'success') {
                             alert('Announcement posted!');
                             announcementForm.reset();
-                        } else {
-                            alert('Error: ' + data.message);
-                        }
+                        } else { alert('Error: ' + data.message); }
                     }).finally(() => { btn.disabled = false; btn.innerHTML = 'Post'; });
                 });
             }
 
-            // --- ANNOUNCEMENT FETCH LOGIC ---
             function fetchLatestAnnouncement() {
                 fetch('/get_latest_announcement').then(res => res.json()).then(data => {
                     if (data && localStorage.getItem('dismissedAnnouncement') !== data.id) {
@@ -649,10 +674,13 @@
             }
             fetchLatestAnnouncement();
 
-            // Initial status check
             fetchStatus();
             statusInterval = setInterval(fetchStatus, 1500);
         });
     </script>
+
+    <!-- Vercel Analytics -->
+    <script src="/_vercel/analytics/script.js"></script>
+    <script src="/_vercel/speed-insights/script.js"></script>
 </body>
 </html>
