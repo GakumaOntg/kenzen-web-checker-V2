@@ -40,6 +40,7 @@ APP_DATA_DIR = os.path.join(DATA_DIR, 'app_data')
 
 USERS_FILE = os.path.join(DATA_DIR, 'users.json')
 KEYS_FILE = os.path.join(DATA_DIR, 'keys.json')
+ANNOUNCEMENTS_FILE = os.path.join(DATA_DIR, 'announcements.json') # NEW: For announcements
 
 # --- Ensure necessary packages are installed ---
 # This part is handled by requirements.txt on Vercel.
@@ -975,6 +976,45 @@ def get_admin_data():
         "users": sorted(safe_users, key=lambda x: x['registered_at'], reverse=True),
         "keys": sorted(keys, key=lambda x: x['generated_at'], reverse=True)
     })
+
+# --- NEW: Announcement Routes ---
+@app.route('/admin/post_announcement', methods=['POST'])
+def post_announcement():
+    if session.get('user', {}).get('username') != 'admin':
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+
+    data = request.json
+    message = data.get('message')
+    msg_type = data.get('msg_type', 'info')
+
+    if not message:
+        return jsonify({"status": "error", "message": "Message cannot be empty."}), 400
+
+    announcements = load_data(ANNOUNCEMENTS_FILE)
+    new_announcement = {
+        "id": uuid.uuid4().hex,
+        "message": message,
+        "type": msg_type,
+        "timestamp": datetime.now().isoformat()
+    }
+    announcements.append(new_announcement)
+    save_data(announcements, ANNOUNCEMENTS_FILE)
+
+    return jsonify({"status": "success", "message": "Announcement posted."})
+
+@app.route('/get_latest_announcement')
+def get_latest_announcement():
+    if 'user' not in session:
+        return jsonify(None)
+
+    announcements = load_data(ANNOUNCEMENTS_FILE)
+    if not announcements:
+        return jsonify(None)
+
+    # Return the most recent announcement
+    latest = sorted(announcements, key=lambda x: x['timestamp'], reverse=True)[0]
+    return jsonify(latest)
+
 
 @app.route('/results/<path:filename>')
 def download_file(filename):
