@@ -198,9 +198,9 @@
                              <div class="mb-3">
                                 <label for="checker_speed" class="form-label">Checker Speed</label>
                                 <select class="form-select" id="checker_speed" name="checker_speed">
-                                    <option value="normal" selected>Normal (No Delay)</option>
-                                    <option value="slow">Slow (1s Delay/Account)</option>
-                                    <option value="slower">Slower (3s Delay/Account)</option>
+                                    <option value="fast" selected>Fast (No Delay)</option>
+                                    <option value="medium">Medium (1s Delay/Account)</option>
+                                    <option value="slow">Slow (2s Delay/Account)</option>
                                 </select>
                             </div>
                             <div class="mb-3">
@@ -526,8 +526,20 @@
             toggleCookieNumberInput();
 
             function updateUI(status) {
-                if (status.running) { startBtn.style.display = 'none'; stopBtn.style.display = 'block'; } 
-                else { startBtn.style.display = 'block'; stopBtn.style.display = 'none'; if (statusInterval) { clearInterval(statusInterval); } }
+                if (status.running) {
+                    startBtn.style.display = 'none';
+                    stopBtn.style.display = 'block';
+                    startBtn.disabled = true;
+                } else {
+                    startBtn.style.display = 'block';
+                    stopBtn.style.display = 'none';
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = '<i class="bi bi-play-circle-fill"></i> Start Checker';
+                    if (statusInterval) {
+                        clearInterval(statusInterval);
+                        statusInterval = null;
+                    }
+                }
 
                 const progress = status.total > 0 ? (status.progress / status.total) * 100 : 0;
                 progressBar.style.width = progress.toFixed(2) + '%';
@@ -549,18 +561,141 @@
                     const newLogs = status.logs.slice(lastLogCount);
                     newLogs.forEach(log => {
                         const logElement = document.createElement('div');
-                        logElement.className = `log-line ${log.class}`;
-                        logElement.innerHTML = `<span class="timestamp">${log.timestamp}</span><span>${log.message}</span>`;
+                        logElement.className = `log-line`;
+                        logElement.innerHTML = `<span class="timestamp">${log.timestamp}</span><span class="${log.class}">${log.message}</span>`;
                         logsContainer.appendChild(logElement);
                     });
                     logsContainer.scrollTop = logsContainer.scrollHeight;
                     lastLogCount = status.logs.length;
                 }
                 
-                if (status.captcha_detected) { captchaModal.show(); } else { captchaModal.hide(); }
+                if (status.captcha_detected) {
+                    if (!captchaModal._isShown) captchaModal.show();
+                } else {
+                    if (captchaModal._isShown) captchaModal.hide();
+                }
                 
                 if(status.final_summary && !status.running) {
                     const summaryElement = document.createElement('pre');
                     summaryElement.className = 'text-success p-2 mt-2 border border-success rounded';
                     summaryElement.textContent = status.final_summary;
-   
+                    logsContainer.appendChild(summaryElement);
+                    logsContainer.scrollTop = logsContainer.scrollHeight;
+                }
+            }
+
+            function fetchStatus() {
+                fetch("{{ url_for('get_status') }}")
+                    .then(response => {
+                        if (response.status === 401) { // Unauthorized
+                            if (statusInterval) clearInterval(statusInterval);
+                            window.location.href = "{{ url_for('login') }}";
+                            return null;
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data) {
+                           updateUI(data);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching status:', error);
+                        const errorElement = document.createElement('div');
+                        errorElement.className = 'log-line text-danger';
+                        errorElement.innerHTML = `<span class="timestamp">${new Date().toLocaleTimeString()}</span><span>Error fetching status. Polling stopped.</span>`;
+                        logsContainer.appendChild(errorElement);
+                        if(statusInterval) clearInterval(statusInterval);
+                    });
+            }
+            
+            // Initial check on page load to see if a process is already running from a previous session
+            fetchStatus();
+
+            startForm.addEventListener('submit', function (e) {
+                // This event listener now simply handles the UI change on submit.
+                // The form submission itself will cause a page reload.
+                startBtn.disabled = true;
+                startBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Starting...';
+                
+                // Start polling immediately to catch the new state after reload.
+                if (statusInterval) clearInterval(statusInterval);
+                statusInterval = setInterval(fetchStatus, 1000); 
+            });
+
+            stopBtn.addEventListener('click', function() {
+                this.disabled = true;
+                this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Stopping...';
+                fetch("{{ url_for('stop_check_route') }}", { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => console.log(data.message))
+                    .finally(() => {
+                        this.disabled = false;
+                        this.innerHTML = '<i class="bi bi-stop-circle-fill"></i> Stop Checker';
+                    });
+            });
+
+            // CAPTCHA Modal actions
+            document.querySelectorAll('.captcha-action-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const action = this.dataset.action;
+                    captchaModal.hide();
+                    const formData = new URLSearchParams();
+                    formData.append('action', action);
+
+                    fetch("{{ url_for('captcha_action') }}", {
+                        method: 'POST',
+                        body: formData
+                    });
+                });
+            });
+
+            // Admin panel logic
+            if (generateKeyForm) {
+                generateKeyForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const formData = new FormData(this);
+                    fetch("{{ url_for('generate_key') }}", { method: 'POST', body: formData })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                alert('Key generated: ' + data.key);
+                                loadAdminData(); // Refresh data
+                            } else {
+                                alert('Error: ' + data.message);
+                            }
+                        });
+                });
+            }
+
+            function loadAdminData() {
+                if (!adminUsersTable || !adminKeysTable) return;
+                fetch("{{ url_for('get_admin_data') }}")
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.users) {
+                            adminUsersTable.innerHTML = '';
+                            data.users.forEach(user => {
+                                const expiry = user.upgrade_expires_at ? new Date(user.upgrade_expires_at).toLocaleDateString() : 'Permanent';
+                                const status = user.upgraded ? `<span class="text-success">Upgraded (Expires: ${expiry})</span>` : 'Free';
+                                adminUsersTable.innerHTML += `<tr><td>${user.username}</td><td>${user.email}</td><td>${status}</td></tr>`;
+                            });
+                        }
+                        if (data.keys) {
+                            adminKeysTable.innerHTML = '';
+                            data.keys.forEach(key => {
+                                const status = key.redeemed_by ? `<span class="text-warning">Redeemed by ${key.redeemed_by}</span>` : '<span class="text-success">Available</span>';
+                                adminKeysTable.innerHTML += `<tr><td><small>${key.key}</small></td><td>${status}</td></tr>`;
+                            });
+                        }
+                    }).catch(err => console.error("Failed to load admin data:", err));
+            }
+
+            const adminPanel = document.getElementById('admin-panel');
+            if (adminPanel) {
+                adminPanel.addEventListener('show.bs.collapse', loadAdminData);
+            }
+        });
+    </script>
+</body>
+</html>
