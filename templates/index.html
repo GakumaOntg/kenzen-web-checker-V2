@@ -95,7 +95,6 @@
         }
         .log-line { display: flex; }
         .log-line .timestamp { color: #888; margin-right: 10px; flex-shrink: 0; }
-        .log-line .text-secondary { color: #6c757d !important; }
         .progress-bar { transition: width 0.5s ease-in-out; }
         .text-success { color: #28a745 !important; }
         .text-danger { color: #dc3545 !important; }
@@ -115,12 +114,7 @@
     <div class="container mt-4">
 
         <div class="d-flex justify-content-between align-items-center mb-2">
-            <div>
-                <h4 class="mb-0">Welcome, {{ user.username }}!</h4>
-                {% if user.upgraded and user.upgrade_expires_at %}
-                    <small id="expiry-countdown" class="text-warning" data-expiry="{{ user.upgrade_expires_at }}"></small>
-                {% endif %}
-            </div>
+            <h4 class="mb-0">Welcome, {{ user.username }}!</h4>
             <div>
                 {% if user.upgraded %}
                     <span class="badge bg-success"><i class="bi bi-star-fill"></i> Upgraded Account</span>
@@ -190,18 +184,11 @@
                                     <option value="set_cookie">Numbered Set (from config)</option>
                                 </select>
                             </div>
+                            <!-- NEW: Number Input Field -->
                             <div class="mb-3" id="cookie-number-input-wrapper" style="display: none;">
                                 <label for="cookie_number_input" class="form-label">Use Fixed Cookie Number</label>
                                 <input type="number" class="form-control" id="cookie_number_input" name="cookie_number" min="1" placeholder="e.g., 200 (optional)">
                                 <div class="form-text">Leave empty to cycle through all cookies in the set.</div>
-                            </div>
-                             <div class="mb-3">
-                                <label for="checker_speed" class="form-label">Checker Speed</label>
-                                <select class="form-select" id="checker_speed" name="checker_speed">
-                                    <option value="fast" selected>Fast (No Delay)</option>
-                                    <option value="medium">Medium (1s Delay/Account)</option>
-                                    <option value="slow">Slow (2s Delay/Account)</option>
-                                </select>
                             </div>
                             <div class="mb-3">
                                 <label class="form-label">Telegram Notifications</label>
@@ -283,13 +270,9 @@
                         </h2>
                         <div id="admin-panel" class="accordion-collapse collapse">
                             <div class="accordion-body">
-                                <form id="generate-key-form" class="mb-3">
-                                    <label class="form-label">Generate New Key</label>
-                                    <div class="input-group">
-                                        <input type="number" class="form-control" name="duration_days" min="0" placeholder="Duration in days (0 for permanent)" required>
-                                        <button class="btn btn-info" type="submit"><i class="bi bi-key-fill"></i> Generate</button>
-                                    </div>
-                                </form>
+                                <div class="d-grid mb-3">
+                                    <button id="generate-key-btn" class="btn btn-info"><i class="bi bi-key-fill"></i> Generate New Key</button>
+                                </div>
                                 
                                 <h6><i class="bi bi-people-fill"></i> Registered Users</h6>
                                 <div class="table-responsive mb-3">
@@ -446,11 +429,12 @@
             const creditsSpan = document.getElementById('credits-span');
             const resetAppearanceBtn = document.getElementById('reset-appearance-btn');
             
+            // NEW: Cookie number input elements
             const cookieModuleSelect = document.getElementById('cookie_module');
             const cookieNumberWrapper = document.getElementById('cookie-number-input-wrapper');
 
-            // Admin Panel Elements
-            const generateKeyForm = document.getElementById('generate-key-form');
+            // NEW: Admin Panel Elements
+            const generateKeyBtn = document.getElementById('generate-key-btn');
             const adminUsersTable = document.getElementById('admin-users-table');
             const adminKeysTable = document.getElementById('admin-keys-table');
             
@@ -469,11 +453,17 @@
                     logsBg: logsBgPicker.value,
                     creditsText: creditsTextInput.value
                 };
+
+                // Apply CSS variables
                 htmlElement.style.setProperty('--highlight-color', settings.highlightColor);
                 htmlElement.style.setProperty('--body-bg', settings.bodyBg);
                 htmlElement.style.setProperty('--card-bg', settings.cardBg);
                 htmlElement.style.setProperty('--logs-bg', settings.logsBg);
+                
+                // Apply credits text
                 creditsSpan.textContent = `            𝐏𝐫𝐞𝐬𝐞𝐧𝐭𝐞𝐝 𝐁𝐲: ${settings.creditsText} `;
+                
+                // Save to localStorage
                 localStorage.setItem(APPEARANCE_STORAGE_KEY, JSON.stringify(settings));
             }
 
@@ -488,40 +478,39 @@
                     logsBgPicker.value = settings.logsBg;
                     creditsTextInput.value = settings.creditsText;
                 }
+                // Apply the loaded (or default) settings
                 applyAndSaveAppearance();
             }
             
-            themeButtons.forEach(button => { button.addEventListener('click', () => { htmlElement.setAttribute('data-theme-color', button.dataset.theme); applyAndSaveAppearance(); }); });
-            [highlightColorPicker, bodyBgPicker, cardBgPicker, logsBgPicker].forEach(picker => { picker.addEventListener('input', applyAndSaveAppearance); });
+            themeButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    htmlElement.setAttribute('data-theme-color', button.dataset.theme);
+                    applyAndSaveAppearance();
+                });
+            });
+
+            [highlightColorPicker, bodyBgPicker, cardBgPicker, logsBgPicker].forEach(picker => {
+                picker.addEventListener('input', applyAndSaveAppearance);
+            });
             creditsTextInput.addEventListener('input', applyAndSaveAppearance);
-            resetAppearanceBtn.addEventListener('click', () => { localStorage.removeItem(APPEARANCE_STORAGE_KEY); location.reload(); });
-            loadAppearance();
+
+            resetAppearanceBtn.addEventListener('click', () => {
+                localStorage.removeItem(APPEARANCE_STORAGE_KEY);
+                location.reload();
+            });
             
-            // --- EXPIRY COUNTDOWN LOGIC ---
-            const expiryElement = document.getElementById('expiry-countdown');
-            if (expiryElement && expiryElement.dataset.expiry) {
-                const expiryDate = new Date(expiryElement.dataset.expiry);
-                const countdownInterval = setInterval(() => {
-                    const now = new Date();
-                    const distance = expiryDate - now;
-
-                    if (distance < 0) {
-                        expiryElement.innerHTML = '<i class="bi bi-clock-history"></i> Upgrade Expired. Please refresh.';
-                        clearInterval(countdownInterval);
-                        return;
-                    }
-
-                    const days = Math.floor(distance / (1000 * 60 * 60 * 24));
-                    const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                    const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-                    const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-                    
-                    expiryElement.innerHTML = `<i class="bi bi-clock-history"></i> Upgrade expires in: ${days}d ${hours}h ${minutes}m ${seconds}s`;
-
-                }, 1000);
+            loadAppearance();
+            // --- END APPEARANCE & CREDITS LOGIC ---
+            
+            // --- LOGIC FOR COOKIE NUMBER INPUT ---
+            function toggleCookieNumberInput() {
+                if (cookieModuleSelect.value === 'set_cookie') {
+                    cookieNumberWrapper.style.display = 'block';
+                } else {
+                    cookieNumberWrapper.style.display = 'none';
+                }
             }
             
-            function toggleCookieNumberInput() { cookieNumberWrapper.style.display = (cookieModuleSelect.value === 'set_cookie') ? 'block' : 'none'; }
             cookieModuleSelect.addEventListener('change', toggleCookieNumberInput);
             toggleCookieNumberInput();
 
@@ -529,16 +518,10 @@
                 if (status.running) {
                     startBtn.style.display = 'none';
                     stopBtn.style.display = 'block';
-                    startBtn.disabled = true;
                 } else {
                     startBtn.style.display = 'block';
                     stopBtn.style.display = 'none';
-                    startBtn.disabled = false;
-                    startBtn.innerHTML = '<i class="bi bi-play-circle-fill"></i> Start Checker';
-                    if (statusInterval) {
-                        clearInterval(statusInterval);
-                        statusInterval = null;
-                    }
+                    if (statusInterval) { clearInterval(statusInterval); }
                 }
 
                 const progress = status.total > 0 ? (status.progress / status.total) * 100 : 0;
@@ -561,19 +544,16 @@
                     const newLogs = status.logs.slice(lastLogCount);
                     newLogs.forEach(log => {
                         const logElement = document.createElement('div');
-                        logElement.className = `log-line`;
-                        logElement.innerHTML = `<span class="timestamp">${log.timestamp}</span><span class="${log.class}">${log.message}</span>`;
+                        logElement.className = `log-line ${log.class}`;
+                        logElement.innerHTML = `<span class="timestamp">${log.timestamp}</span><span>${log.message}</span>`;
                         logsContainer.appendChild(logElement);
                     });
                     logsContainer.scrollTop = logsContainer.scrollHeight;
                     lastLogCount = status.logs.length;
                 }
                 
-                if (status.captcha_detected) {
-                    if (!captchaModal._isShown) captchaModal.show();
-                } else {
-                    if (captchaModal._isShown) captchaModal.hide();
-                }
+                if (status.captcha_detected) { captchaModal.show(); } 
+                else { captchaModal.hide(); }
                 
                 if(status.final_summary && !status.running) {
                     const summaryElement = document.createElement('pre');
@@ -585,116 +565,103 @@
             }
 
             function fetchStatus() {
-                fetch("{{ url_for('get_status') }}")
-                    .then(response => {
-                        if (response.status === 401) { // Unauthorized
-                            if (statusInterval) clearInterval(statusInterval);
-                            window.location.href = "{{ url_for('login') }}";
-                            return null;
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (data) {
-                           updateUI(data);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error fetching status:', error);
-                        const errorElement = document.createElement('div');
-                        errorElement.className = 'log-line text-danger';
-                        errorElement.innerHTML = `<span class="timestamp">${new Date().toLocaleTimeString()}</span><span>Error fetching status. Polling stopped.</span>`;
-                        logsContainer.appendChild(errorElement);
-                        if(statusInterval) clearInterval(statusInterval);
-                    });
+                fetch('/status').then(response => {
+                    if (response.status === 401) {
+                        window.location.href = '/login';
+                        return;
+                    }
+                    return response.json();
+                }).then(data => {
+                    if(data) updateUI(data);
+                }).catch(error => {
+                    console.error('Error fetching status:', error);
+                    if (statusInterval) clearInterval(statusInterval);
+                });
             }
-            
-            // Initial check on page load to see if a process is already running from a previous session
-            fetchStatus();
 
             startForm.addEventListener('submit', function (e) {
-                // This event listener now simply handles the UI change on submit.
-                // The form submission itself will cause a page reload.
+                const accountFile = document.getElementById('account_file');
+                if (!accountFile.files || accountFile.files.length === 0) {
+                    // This is a redundant check as 'required' handles it, but good practice.
+                    e.preventDefault();
+                    alert("Please select an account file.");
+                    return;
+                }
                 startBtn.disabled = true;
                 startBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Starting...';
                 
-                // Start polling immediately to catch the new state after reload.
-                if (statusInterval) clearInterval(statusInterval);
-                statusInterval = setInterval(fetchStatus, 1000); 
+                setTimeout(() => {
+                    lastLogCount = 0;
+                    logsContainer.innerHTML = '';
+                    statusInterval = setInterval(fetchStatus, 1500);
+                }, 500);
             });
 
-            stopBtn.addEventListener('click', function() {
-                this.disabled = true;
-                this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Stopping...';
-                fetch("{{ url_for('stop_check_route') }}", { method: 'POST' })
-                    .then(res => res.json())
-                    .then(data => console.log(data.message))
-                    .finally(() => {
-                        this.disabled = false;
-                        this.innerHTML = '<i class="bi bi-stop-circle-fill"></i> Stop Checker';
-                    });
-            });
-
-            // CAPTCHA Modal actions
-            document.querySelectorAll('.captcha-action-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const action = this.dataset.action;
-                    captchaModal.hide();
-                    const formData = new URLSearchParams();
-                    formData.append('action', action);
-
-                    fetch("{{ url_for('captcha_action') }}", {
-                        method: 'POST',
-                        body: formData
-                    });
+            stopBtn.addEventListener('click', function () {
+                fetch('/stop_check', { method: 'POST' }).then(response => response.json()).then(data => {
+                    console.log(data.message);
+                    stopBtn.disabled = true;
+                    stopBtn.textContent = "Stopping...";
                 });
             });
+            
+            document.querySelectorAll('.captcha-action-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const action = this.dataset.action;
+                    fetch('/captcha_action', { 
+                        method: 'POST', 
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: new URLSearchParams({action: action})
+                    });
+                    captchaModal.hide();
+                });
+            });
+            
+            // --- ADMIN PANEL LOGIC ---
+            function loadAdminData() {
+                if (!adminUsersTable || !adminKeysTable) return;
+                fetch('/admin/data').then(res => res.json()).then(data => {
+                    // Populate Users Table
+                    adminUsersTable.innerHTML = '';
+                    data.users.forEach(user => {
+                        const statusBadge = user.upgraded ? '<span class="badge bg-success">Upgraded</span>' : '<span class="badge bg-secondary">Free</span>';
+                        adminUsersTable.innerHTML += `<tr><td>${user.username}</td><td>${user.email}</td><td>${statusBadge}</td></tr>`;
+                    });
 
-            // Admin panel logic
-            if (generateKeyForm) {
-                generateKeyForm.addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    const formData = new FormData(this);
-                    fetch("{{ url_for('generate_key') }}", { method: 'POST', body: formData })
+                    // Populate Keys Table
+                    adminKeysTable.innerHTML = '';
+                    data.keys.forEach(key => {
+                        const status = key.redeemed_by ? `<span class="badge bg-danger">Used by ${key.redeemed_by}</span>` : '<span class="badge bg-success">Available</span>';
+                        adminKeysTable.innerHTML += `<tr><td><code>${key.key}</code></td><td>${status}</td></tr>`;
+                    });
+                });
+            }
+
+            if (generateKeyBtn) {
+                generateKeyBtn.addEventListener('click', () => {
+                    generateKeyBtn.disabled = true;
+                    generateKeyBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating...';
+                    fetch('/admin/generate_key', { method: 'POST' })
                         .then(res => res.json())
                         .then(data => {
                             if (data.status === 'success') {
-                                alert('Key generated: ' + data.key);
-                                loadAdminData(); // Refresh data
+                                alert(`New Key Generated: ${data.key}`);
+                                loadAdminData(); // Refresh table
                             } else {
-                                alert('Error: ' + data.message);
+                                alert('Failed to generate key.');
                             }
+                        }).finally(() => {
+                            generateKeyBtn.disabled = false;
+                            generateKeyBtn.innerHTML = '<i class="bi bi-key-fill"></i> Generate New Key';
                         });
                 });
+                // Also load data when the admin panel is shown
+                document.getElementById('admin-panel').addEventListener('shown.bs.collapse', loadAdminData);
             }
 
-            function loadAdminData() {
-                if (!adminUsersTable || !adminKeysTable) return;
-                fetch("{{ url_for('get_admin_data') }}")
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.users) {
-                            adminUsersTable.innerHTML = '';
-                            data.users.forEach(user => {
-                                const expiry = user.upgrade_expires_at ? new Date(user.upgrade_expires_at).toLocaleDateString() : 'Permanent';
-                                const status = user.upgraded ? `<span class="text-success">Upgraded (Expires: ${expiry})</span>` : 'Free';
-                                adminUsersTable.innerHTML += `<tr><td>${user.username}</td><td>${user.email}</td><td>${status}</td></tr>`;
-                            });
-                        }
-                        if (data.keys) {
-                            adminKeysTable.innerHTML = '';
-                            data.keys.forEach(key => {
-                                const status = key.redeemed_by ? `<span class="text-warning">Redeemed by ${key.redeemed_by}</span>` : '<span class="text-success">Available</span>';
-                                adminKeysTable.innerHTML += `<tr><td><small>${key.key}</small></td><td>${status}</td></tr>`;
-                            });
-                        }
-                    }).catch(err => console.error("Failed to load admin data:", err));
-            }
-
-            const adminPanel = document.getElementById('admin-panel');
-            if (adminPanel) {
-                adminPanel.addEventListener('show.bs.collapse', loadAdminData);
-            }
+            // Initial status check
+            fetchStatus();
+            statusInterval = setInterval(fetchStatus, 1500);
         });
     </script>
 </body>
